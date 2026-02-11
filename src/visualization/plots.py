@@ -520,6 +520,276 @@ def generate_all_visualizations(results: Dict, output_dir: Path = None) -> None:
     print("=" * 60)
 
 
+def plot_ridership_trends(ridership_df: pd.DataFrame,
+                          output_dir: Path = None) -> None:
+    """
+    Plot ridership trends pre vs post pandemic (Q1).
+
+    Args:
+        ridership_df: DataFrame with yearly ridership data
+        output_dir: Output directory
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Yearly ridership trend
+    years = ridership_df['year']
+    boardings = ridership_df['total_boardings']
+
+    # Color by period
+    colors = []
+    for y in years:
+        if y <= 2019:
+            colors.append('#2ecc71')  # Green for pre-pandemic
+        elif y == 2020:
+            colors.append('#e74c3c')  # Red for pandemic year
+        else:
+            colors.append('#3498db')  # Blue for post-pandemic
+
+    axes[0].bar(years.astype(str), boardings / 1e6, color=colors, edgecolor='black', alpha=0.8)
+    axes[0].set_xlabel('Year')
+    axes[0].set_ylabel('Total Boardings (Millions)')
+    axes[0].set_title('Annual Bus Ridership Trend')
+    axes[0].tick_params(axis='x', rotation=45)
+
+    # Add legend
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor='#2ecc71', edgecolor='black', label='Pre-Pandemic (2016-2019)'),
+        Patch(facecolor='#e74c3c', edgecolor='black', label='Pandemic (2020)'),
+        Patch(facecolor='#3498db', edgecolor='black', label='Post-Pandemic (2021-2024)')
+    ]
+    axes[0].legend(handles=legend_elements, loc='upper right')
+
+    # Pre vs Post comparison
+    pre_pandemic = ridership_df[ridership_df['year'] <= 2019]['total_boardings'].mean()
+    post_pandemic = ridership_df[ridership_df['year'] >= 2021]['total_boardings'].mean()
+
+    categories = ['Pre-Pandemic\n(2016-2019)', 'Post-Pandemic\n(2021-2024)']
+    values = [pre_pandemic / 1e6, post_pandemic / 1e6]
+    colors_bar = ['#2ecc71', '#3498db']
+
+    bars = axes[1].bar(categories, values, color=colors_bar, edgecolor='black', alpha=0.8)
+
+    # Add percentage change annotation
+    pct_change = ((post_pandemic - pre_pandemic) / pre_pandemic) * 100
+    axes[1].annotate(f'{pct_change:+.1f}%',
+                     xy=(1, values[1]), xytext=(1.2, (values[0] + values[1]) / 2),
+                     fontsize=14, fontweight='bold', color='red',
+                     arrowprops=dict(arrowstyle='->', color='red'))
+
+    axes[1].set_ylabel('Average Annual Boardings (Millions)')
+    axes[1].set_title('Pre vs Post Pandemic Ridership Comparison')
+
+    # Add value labels
+    for bar, val in zip(bars, values):
+        axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02,
+                     f'{val:.2f}M', ha='center', va='bottom', fontweight='bold')
+
+    plt.tight_layout()
+    save_figure(fig, 'ridership_pre_post_pandemic.png', output_dir)
+
+
+def plot_ridership_by_route(route_df: pd.DataFrame,
+                            top_n: int = 20,
+                            output_dir: Path = None) -> None:
+    """
+    Plot ridership by route with pre/post pandemic comparison.
+
+    Args:
+        route_df: DataFrame with route ridership data
+        top_n: Number of top routes to show
+        output_dir: Output directory
+    """
+    fig, ax = setup_figure(figsize=(14, 10))
+
+    # Sort and get top routes by total ridership change
+    sorted_df = route_df.nlargest(top_n, 'pre_pandemic_avg_yearly')
+
+    y_pos = range(len(sorted_df))
+    width = 0.35
+
+    pre_vals = sorted_df['pre_pandemic_avg_yearly'] / 1e3
+    post_vals = sorted_df['post_pandemic_avg_yearly'] / 1e3
+
+    bars1 = ax.barh([y - width/2 for y in y_pos], pre_vals,
+                    width, label='Pre-Pandemic', color='#2ecc71', alpha=0.8)
+    bars2 = ax.barh([y + width/2 for y in y_pos], post_vals,
+                    width, label='Post-Pandemic', color='#3498db', alpha=0.8)
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(sorted_df['route_id'].astype(str))
+    ax.set_xlabel('Average Annual Boardings (Thousands)')
+    ax.set_ylabel('Route')
+    ax.set_title(f'Top {top_n} Routes: Pre vs Post Pandemic Ridership')
+    ax.legend()
+    ax.invert_yaxis()
+
+    plt.tight_layout()
+    save_figure(fig, 'ridership_by_route_comparison.png', output_dir)
+
+
+def plot_demographic_correlations(corr_df: pd.DataFrame,
+                                  output_dir: Path = None) -> None:
+    """
+    Plot demographic correlations heatmap (Q7).
+
+    Args:
+        corr_df: DataFrame with correlation results
+        output_dir: Output directory
+    """
+    fig, ax = setup_figure(figsize=(12, 8))
+
+    # Pivot the data for heatmap
+    pivot_df = corr_df.pivot(index='service_metric', columns='demographic_variable', values='correlation')
+
+    # Create heatmap
+    im = ax.imshow(pivot_df.values, cmap='RdBu_r', vmin=-1, vmax=1, aspect='auto')
+
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Correlation Coefficient')
+
+    # Set ticks
+    ax.set_xticks(range(len(pivot_df.columns)))
+    ax.set_yticks(range(len(pivot_df.index)))
+    ax.set_xticklabels(pivot_df.columns, rotation=45, ha='right')
+    ax.set_yticklabels(pivot_df.index)
+
+    # Add correlation values as text
+    for i in range(len(pivot_df.index)):
+        for j in range(len(pivot_df.columns)):
+            val = pivot_df.values[i, j]
+            if not np.isnan(val):
+                color = 'white' if abs(val) > 0.5 else 'black'
+                ax.text(j, i, f'{val:.2f}', ha='center', va='center', color=color, fontsize=10)
+
+    ax.set_title('Service Metrics vs Demographic Variables\n(Correlation Coefficients)')
+
+    plt.tight_layout()
+    save_figure(fig, 'demographic_correlations_heatmap.png', output_dir)
+
+
+def plot_demographic_comparison(merged_df: pd.DataFrame,
+                                output_dir: Path = None) -> None:
+    """
+    Plot service comparison between high-minority and other areas (Q7).
+
+    Args:
+        merged_df: DataFrame with merged service and demographic data
+        output_dir: Output directory
+    """
+    if 'serves_high_minority' not in merged_df.columns:
+        print("  No minority classification available")
+        return
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    high_minority = merged_df[merged_df['serves_high_minority']]
+    other = merged_df[~merged_df['serves_high_minority']]
+
+    # Mean delay comparison
+    categories = ['High-Minority\nAreas', 'Other\nAreas']
+
+    # Plot 1: Mean Delay
+    vals = [high_minority['mean_delay'].mean(), other['mean_delay'].mean()]
+    colors = ['#e74c3c', '#3498db']
+    bars = axes[0].bar(categories, vals, color=colors, edgecolor='black', alpha=0.8)
+    axes[0].set_ylabel('Average Delay (minutes)')
+    axes[0].set_title('Mean Delay by Area Type')
+    for bar, val in zip(bars, vals):
+        axes[0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.2,
+                     f'{val:.1f}', ha='center', va='bottom', fontweight='bold')
+
+    # Plot 2: On-Time Performance
+    if 'on_time_performance' in merged_df.columns:
+        vals = [high_minority['on_time_performance'].mean(), other['on_time_performance'].mean()]
+        bars = axes[1].bar(categories, vals, color=colors, edgecolor='black', alpha=0.8)
+        axes[1].set_ylabel('On-Time Performance (%)')
+        axes[1].set_title('On-Time Performance by Area Type')
+        for bar, val in zip(bars, vals):
+            axes[1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                         f'{val:.1f}%', ha='center', va='bottom', fontweight='bold')
+
+    # Plot 3: Scatter plot - Minority % vs Delay
+    if 'minority_pct' in merged_df.columns:
+        axes[2].scatter(merged_df['minority_pct'] * 100, merged_df['mean_delay'],
+                        alpha=0.6, edgecolors='black', s=50)
+        axes[2].set_xlabel('Minority Population (%)')
+        axes[2].set_ylabel('Mean Delay (minutes)')
+        axes[2].set_title('Delay vs Minority Population')
+
+        # Add trend line
+        z = np.polyfit(merged_df['minority_pct'] * 100, merged_df['mean_delay'], 1)
+        p = np.poly1d(z)
+        x_line = np.linspace(merged_df['minority_pct'].min() * 100, merged_df['minority_pct'].max() * 100, 100)
+        axes[2].plot(x_line, p(x_line), 'r--', alpha=0.8, label='Trend')
+        axes[2].legend()
+
+    plt.tight_layout()
+    save_figure(fig, 'demographic_service_comparison.png', output_dir)
+
+
+def plot_neighborhood_demographics(demo_df: pd.DataFrame,
+                                   output_dir: Path = None) -> None:
+    """
+    Plot neighborhood demographic summary (Q7).
+
+    Args:
+        demo_df: DataFrame with neighborhood demographics
+        output_dir: Output directory
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+
+    # Sort by minority percentage for visualization
+    sorted_df = demo_df.sort_values('minority_pct', ascending=True)
+
+    # Plot 1: Minority percentage by neighborhood
+    colors = ['#e74c3c' if v else '#3498db' for v in sorted_df['high_minority']]
+    axes[0, 0].barh(sorted_df['neighborhood'], sorted_df['minority_pct'] * 100,
+                    color=colors, edgecolor='black', alpha=0.8)
+    axes[0, 0].axvline(x=50, color='red', linestyle='--', label='50% Threshold')
+    axes[0, 0].set_xlabel('Minority Population (%)')
+    axes[0, 0].set_title('Minority Population by Neighborhood')
+    axes[0, 0].legend()
+
+    # Plot 2: Median income by neighborhood
+    sorted_income = demo_df.sort_values('median_income', ascending=True)
+    colors = ['#e74c3c' if v else '#3498db' for v in sorted_income['low_income']]
+    axes[0, 1].barh(sorted_income['neighborhood'], sorted_income['median_income'] / 1000,
+                    color=colors, edgecolor='black', alpha=0.8)
+    axes[0, 1].set_xlabel('Median Income ($K)')
+    axes[0, 1].set_title('Median Household Income by Neighborhood')
+
+    # Plot 3: Poverty rate by neighborhood
+    sorted_poverty = demo_df.sort_values('poverty_rate', ascending=False)
+    colors = ['#e74c3c' if v else '#3498db' for v in sorted_poverty['high_poverty']]
+    axes[1, 0].barh(sorted_poverty['neighborhood'], sorted_poverty['poverty_rate'] * 100,
+                    color=colors, edgecolor='black', alpha=0.8)
+    axes[1, 0].set_xlabel('Poverty Rate (%)')
+    axes[1, 0].set_title('Poverty Rate by Neighborhood')
+
+    # Plot 4: Classification summary
+    classifications = ['High Minority', 'Low Income', 'High Poverty', 'Vulnerable']
+    counts = [
+        demo_df['high_minority'].sum(),
+        demo_df['low_income'].sum(),
+        demo_df['high_poverty'].sum(),
+        demo_df['vulnerable'].sum()
+    ]
+    colors = ['#e74c3c', '#f39c12', '#9b59b6', '#c0392b']
+    bars = axes[1, 1].bar(classifications, counts, color=colors, edgecolor='black', alpha=0.8)
+    axes[1, 1].set_ylabel('Number of Neighborhoods')
+    axes[1, 1].set_title(f'Neighborhood Classifications (Total: {len(demo_df)})')
+
+    # Add value labels
+    for bar, count in zip(bars, counts):
+        axes[1, 1].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.2,
+                        str(count), ha='center', va='bottom', fontweight='bold')
+
+    plt.tight_layout()
+    save_figure(fig, 'neighborhood_demographics.png', output_dir)
+
+
 if __name__ == "__main__":
     # Test with sample data
     print("Run this module through the main analysis script.")

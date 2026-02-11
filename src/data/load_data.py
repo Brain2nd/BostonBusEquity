@@ -65,7 +65,7 @@ def find_csv_files(years: List[str] = None) -> List[Path]:
 
 def parse_mbta_datetime(date_col: pd.Series, time_col: pd.Series) -> pd.Series:
     """
-    Parse MBTA datetime format.
+    Parse MBTA datetime format efficiently.
 
     The data has service_date (YYYY-MM-DD) and time as 1900-01-01T...
     We need to combine the actual date with the time portion.
@@ -77,15 +77,20 @@ def parse_mbta_datetime(date_col: pd.Series, time_col: pd.Series) -> pd.Series:
     Returns:
         Series with combined datetime
     """
-    # Extract time from the 1900-01-01T... format
-    time_only = pd.to_datetime(time_col, errors='coerce').dt.time
-    date_only = pd.to_datetime(date_col, errors='coerce').dt.date
+    # Parse date with explicit format
+    dates = pd.to_datetime(date_col, format='%Y-%m-%d', errors='coerce')
 
-    # Combine date and time
-    combined = pd.to_datetime(
-        date_only.astype(str) + ' ' + time_only.astype(str),
-        errors='coerce'
-    )
+    # Extract time components from ISO format (1900-01-01THH:MM:SSZ)
+    # More efficient: extract HH:MM:SS directly from string
+    time_str = time_col.astype(str).str.extract(r'T(\d{2}):(\d{2}):(\d{2})')
+    hours = pd.to_numeric(time_str[0], errors='coerce').fillna(0).astype(int)
+    minutes = pd.to_numeric(time_str[1], errors='coerce').fillna(0).astype(int)
+    seconds = pd.to_numeric(time_str[2], errors='coerce').fillna(0).astype(int)
+
+    # Combine using timedelta (vectorized, much faster)
+    combined = dates + pd.to_timedelta(hours, unit='h') + \
+               pd.to_timedelta(minutes, unit='m') + \
+               pd.to_timedelta(seconds, unit='s')
 
     return combined
 
@@ -201,6 +206,7 @@ def load_data_chunked(years: List[str] = None,
             if 'service_date' in chunk.columns:
                 chunk['year'] = chunk['service_date'].dt.year
                 chunk['month'] = chunk['service_date'].dt.month
+                chunk['day_of_week'] = chunk['service_date'].dt.dayofweek
 
             if 'actual_datetime' in chunk.columns:
                 chunk['hour'] = chunk['actual_datetime'].dt.hour

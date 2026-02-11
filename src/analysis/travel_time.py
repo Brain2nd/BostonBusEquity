@@ -84,14 +84,36 @@ def analyze_travel_times_by_route(years: List[str] = None,
     route_travel_times = defaultdict(list)
 
     for chunk in load_data_chunked(years, target_routes_only=target_only):
-        if 'half_trip_id' not in chunk.columns:
+        if 'half_trip_id' not in chunk.columns or 'actual_datetime' not in chunk.columns:
             continue
 
-        # Group by trip and calculate travel time
-        for (route_id, trip_id), trip_df in chunk.groupby(['route_id', 'half_trip_id']):
-            travel_time = calculate_trip_travel_time(trip_df)
-            if travel_time is not None:
-                route_travel_times[route_id].append(travel_time)
+        # Optimized: Use vectorized operations instead of iterating
+        # Filter to start and end points only
+        endpoints = chunk[chunk['point_type'].isin(['Startpoint', 'Endpoint'])].copy()
+        if endpoints.empty:
+            continue
+
+        # Pivot to get start and end times side by side
+        pivot = endpoints.pivot_table(
+            index=['route_id', 'half_trip_id'],
+            columns='point_type',
+            values='actual_datetime',
+            aggfunc='first'
+        )
+
+        if 'Startpoint' not in pivot.columns or 'Endpoint' not in pivot.columns:
+            continue
+
+        # Calculate travel time in minutes (vectorized)
+        pivot['travel_time'] = (pivot['Endpoint'] - pivot['Startpoint']).dt.total_seconds() / 60
+
+        # Filter valid travel times (positive and reasonable)
+        valid = pivot[(pivot['travel_time'] > 0) & (pivot['travel_time'] <= 300)]
+
+        # Aggregate by route
+        for route_id in valid.index.get_level_values('route_id').unique():
+            times = valid.loc[route_id, 'travel_time'].tolist()
+            route_travel_times[route_id].extend(times)
 
     # Calculate statistics for each route
     results = []
@@ -141,31 +163,37 @@ def analyze_travel_times_by_time_of_day(years: List[str] = None,
     hourly_times = defaultdict(list)
 
     for chunk in load_data_chunked(years, target_routes_only=target_only):
-        if 'half_trip_id' not in chunk.columns:
+        if 'half_trip_id' not in chunk.columns or 'actual_datetime' not in chunk.columns:
             continue
 
-        for (route_id, trip_id), trip_df in chunk.groupby(['route_id', 'half_trip_id']):
-            travel_time = calculate_trip_travel_time(trip_df)
-            if travel_time is None:
-                continue
+        # Optimized: Use vectorized operations
+        endpoints = chunk[chunk['point_type'].isin(['Startpoint', 'Endpoint'])].copy()
+        if endpoints.empty:
+            continue
 
-            # Get hour of trip start
-            start_points = trip_df[trip_df['point_type'] == 'Startpoint']
-            if start_points.empty:
-                continue
+        # Pivot to get start and end times
+        pivot = endpoints.pivot_table(
+            index=['route_id', 'half_trip_id'],
+            columns='point_type',
+            values='actual_datetime',
+            aggfunc='first'
+        )
 
-            if 'hour' in trip_df.columns:
-                hour = start_points['hour'].iloc[0]
-            elif 'actual_datetime' in trip_df.columns:
-                start_dt = start_points['actual_datetime'].iloc[0]
-                if pd.notna(start_dt):
-                    hour = start_dt.hour
-                else:
-                    continue
-            else:
-                continue
+        if 'Startpoint' not in pivot.columns or 'Endpoint' not in pivot.columns:
+            continue
 
-            hourly_times[hour].append(travel_time)
+        # Calculate travel time and hour
+        pivot['travel_time'] = (pivot['Endpoint'] - pivot['Startpoint']).dt.total_seconds() / 60
+        pivot['hour'] = pivot['Startpoint'].dt.hour
+
+        # Filter valid travel times
+        valid = pivot[(pivot['travel_time'] > 0) & (pivot['travel_time'] <= 300) & pivot['hour'].notna()]
+
+        # Group by hour
+        for hour in valid['hour'].dropna().unique():
+            hour_int = int(hour)
+            times = valid[valid['hour'] == hour]['travel_time'].tolist()
+            hourly_times[hour_int].extend(times)
 
     # Calculate statistics
     results = []
@@ -220,27 +248,48 @@ def calculate_scheduled_vs_actual_travel_time(years: List[str] = None,
         if 'half_trip_id' not in chunk.columns:
             continue
 
-        for (route_id, trip_id), trip_df in chunk.groupby(['route_id', 'half_trip_id']):
-            start_points = trip_df[trip_df['point_type'] == 'Startpoint']
-            end_points = trip_df[trip_df['point_type'] == 'Endpoint']
+        has_scheduled = 'scheduled_datetime' in chunk.columns
+        has_actual = 'actual_datetime' in chunk.columns
 
-            if start_points.empty or end_points.empty:
-                continue
+        if not has_scheduled and not has_actual:
+            continue
 
-            # Scheduled travel time
-            if 'scheduled_datetime' in trip_df.columns:
-                sched_start = start_points['scheduled_datetime'].iloc[0]
-                sched_end = end_points['scheduled_datetime'].iloc[0]
+        # Optimized: Use vectorized operations
+        endpoints = chunk[chunk['point_type'].isin(['Startpoint', 'Endpoint'])].copy()
+        if endpoints.empty:
+            continue
 
-                if pd.notna(sched_start) and pd.notna(sched_end):
-                    sched_time = (sched_end - sched_start).total_seconds() / 60
-                    if 0 < sched_time < 300:
-                        route_comparisons[route_id]['scheduled'].append(sched_time)
+        # Pivot for actual times
+        if has_actual:
+            pivot_actual = endpoints.pivot_table(
+                index=['route_id', 'half_trip_id'],
+                columns='point_type',
+                values='actual_datetime',
+                aggfunc='first'
+            )
+            if 'Startpoint' in pivot_actual.columns and 'Endpoint' in pivot_actual.columns:
+                pivot_actual['actual_time'] = (pivot_actual['Endpoint'] - pivot_actual['Startpoint']).dt.total_seconds() / 60
+                valid_actual = pivot_actual[(pivot_actual['actual_time'] > 0) & (pivot_actual['actual_time'] <= 300)]
 
-            # Actual travel time
-            actual_time = calculate_trip_travel_time(trip_df)
-            if actual_time is not None:
-                route_comparisons[route_id]['actual'].append(actual_time)
+                for route_id in valid_actual.index.get_level_values('route_id').unique():
+                    times = valid_actual.loc[route_id, 'actual_time'].tolist()
+                    route_comparisons[route_id]['actual'].extend(times)
+
+        # Pivot for scheduled times
+        if has_scheduled:
+            pivot_sched = endpoints.pivot_table(
+                index=['route_id', 'half_trip_id'],
+                columns='point_type',
+                values='scheduled_datetime',
+                aggfunc='first'
+            )
+            if 'Startpoint' in pivot_sched.columns and 'Endpoint' in pivot_sched.columns:
+                pivot_sched['sched_time'] = (pivot_sched['Endpoint'] - pivot_sched['Startpoint']).dt.total_seconds() / 60
+                valid_sched = pivot_sched[(pivot_sched['sched_time'] > 0) & (pivot_sched['sched_time'] <= 300)]
+
+                for route_id in valid_sched.index.get_level_values('route_id').unique():
+                    times = valid_sched.loc[route_id, 'sched_time'].tolist()
+                    route_comparisons[route_id]['scheduled'].extend(times)
 
     # Calculate comparison metrics
     results = []
