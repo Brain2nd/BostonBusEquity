@@ -116,6 +116,50 @@ python src/data/download_data.py
 > - If download is interrupted, just run the script again - it supports resume
 > - Check download status anytime: `python src/data/download_data.py --status`
 
+### Manual Data Download
+
+Some datasets require manual download due to authentication or access restrictions:
+
+#### 1. MBTA Passenger Survey Data (Optional, for Q7)
+
+1. Visit [MBTA 2024 System-Wide Passenger Survey](https://mbta-massdot.opendata.arcgis.com/datasets/mbta-2024-system-wide-passenger-survey)
+2. Click the **"Download"** button (top right)
+3. Select **"Download as CSV"** from the dropdown
+4. Save the file to `data/raw/survey/`
+5. Rename to `MBTA_2024_Passenger_Survey.csv` (optional)
+
+#### 2. Boston Neighborhood Demographics (Optional, for Q7)
+
+1. Visit [Boston Neighborhood Demographics](https://data.boston.gov/dataset/neighborhood-demographics)
+2. Click **"Explore"** on the CSV resource
+3. Click **"Download"** button
+4. Save to `data/raw/census/`
+
+#### Data Download Status
+
+After running the download script, you should have:
+
+| Dataset | Files | Size | Auto-Download |
+|---------|-------|------|---------------|
+| Arrival/Departure (2020-2026) | 65 | ~18 GB | ✅ Yes |
+| Bus Ridership | 10 | ~850 MB | ✅ Yes |
+| Census Neighborhood | 1 | ~22 KB | ✅ Yes |
+| Passenger Survey | 1 | ~50 MB | ❌ Manual |
+| Demographics (ACS) | 1 | ~100 KB | ❌ Manual |
+
+### Running Analysis
+
+```bash
+# Full analysis on training data (2020-2024)
+python src/run_analysis.py
+
+# Quick test with 2024 data only
+python src/run_analysis.py --quick
+
+# Validation analysis (2025-2026)
+python src/run_analysis.py --validate
+```
+
 ## References
 
 - [Livable Streets Report](https://www.livablestreets.info/)
