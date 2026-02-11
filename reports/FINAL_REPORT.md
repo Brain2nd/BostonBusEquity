@@ -5,6 +5,13 @@
 **Client:** City of Boston Analytics Team / Spark!
 **Date:** February 2025
 
+### Authors
+
+- zztangbu@bu.edu (First Author)
+- lzj2729@bu.edu
+- ljf628@bu.edu
+- yaobc@bu.edu
+
 ---
 
 ## Table of Contents
