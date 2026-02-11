@@ -122,18 +122,24 @@ Some datasets require manual download due to authentication or access restrictio
 
 #### 1. MBTA Passenger Survey Data (Optional, for Q7)
 
-1. Visit [MBTA 2024 System-Wide Passenger Survey](https://mbta-massdot.opendata.arcgis.com/datasets/mbta-2024-system-wide-passenger-survey)
-2. Click the **"Download"** button (top right)
-3. Select **"Download as CSV"** from the dropdown
-4. Save the file to `data/raw/survey/`
+**URL:** https://mbta-massdot.opendata.arcgis.com/datasets/mbta-2024-system-wide-passenger-survey
+
+**Steps:**
+1. Open the URL above in your browser
+2. Click the **"Download"** button (top right corner)
+3. Select **"Download as CSV"** from the dropdown menu
+4. Save the downloaded file to `data/raw/survey/`
 5. Rename to `MBTA_2024_Passenger_Survey.csv` (optional)
 
 #### 2. Boston Neighborhood Demographics (Optional, for Q7)
 
-1. Visit [Boston Neighborhood Demographics](https://data.boston.gov/dataset/neighborhood-demographics)
-2. Click **"Explore"** on the CSV resource
-3. Click **"Download"** button
-4. Save to `data/raw/census/`
+**URL:** https://data.boston.gov/dataset/neighborhood-demographics
+
+**Steps:**
+1. Open the URL above in your browser
+2. Find the CSV resource and click **"Explore"**
+3. Click the **"Download"** button
+4. Save the downloaded file to `data/raw/census/`
 
 #### Data Download Status
 
