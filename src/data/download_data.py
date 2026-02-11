@@ -24,6 +24,7 @@ Usage:
 import os
 import sys
 import zipfile
+import subprocess
 import requests
 from pathlib import Path
 from tqdm import tqdm
@@ -193,8 +194,31 @@ def download_and_extract_zip(item_id: str, year: str, output_dir: Path) -> bool:
         zip_path.unlink()
         return False
     except Exception as e:
-        print(f"  Error extracting: {e}")
-        return False
+        # Try using system unzip command as fallback (supports deflate64)
+        print(f"  Python zipfile failed: {e}")
+        print(f"  Trying system unzip command...")
+        try:
+            extract_dir = output_dir / f"MBTA_Bus_Arrival_Departure_Times_{year}"
+            result = subprocess.run(
+                ["unzip", "-o", str(zip_path), "-d", str(extract_dir)],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                # Remove ZIP file after successful extraction
+                zip_path.unlink()
+                # Find extracted files
+                csv_files = list(extract_dir.glob("*.csv"))
+                if csv_files:
+                    total_size = sum(f.stat().st_size for f in csv_files) / (1024 * 1024)
+                    print(f"  Extracted {len(csv_files)} files ({total_size:.1f} MB total)")
+                return True
+            else:
+                print(f"  System unzip failed: {result.stderr}")
+                return False
+        except FileNotFoundError:
+            print(f"  System unzip command not found")
+            return False
 
 
 def download_bus_arrival_departure(years: list = None):
