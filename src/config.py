@@ -25,8 +25,7 @@ TARGET_ROUTES = [
 # Data split configuration
 # Note: 2018-2019 data not available on ArcGIS, starting from 2020
 TRAIN_YEARS = ["2020", "2021", "2022", "2023", "2024"]
-VALIDATION_YEARS = ["2025"]
-LATEST_YEAR = "2026"  # Partial data available
+VALIDATION_YEARS = ["2025", "2026"]  # 2026 is partial year data
 
 # Pandemic period definition
 PRE_PANDEMIC_END = "2020-03-01"

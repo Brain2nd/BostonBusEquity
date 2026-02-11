@@ -15,11 +15,11 @@ Beyond the original project scope, we have made the following extensions:
 ### Data Scope Extension
 - **Original**: 2018-2024 MBTA bus arrival/departure data
 - **Actual Available**: 2020-2024 (2018-2019 not available on MBTA Open Data Portal)
-- **Extended**: Added 2025 data as validation dataset, 2026 partial data also available
+- **Extended**: Added 2025-2026 data as validation dataset
 
 ### Methodology Enhancement
 - **Training Set**: 2020-2024 data for model training and pattern analysis
-- **Validation Set**: 2025 data for algorithm validation and prediction verification
+- **Validation Set**: 2025-2026 data for algorithm validation and prediction verification
 - This approach allows us to validate our analytical models against the most recent real-world data
 
 ### Updated Data Sources
@@ -63,8 +63,9 @@ BostonBusEquity/
 - **Reliability Data**: [MBTA Bus Arrival Departure Times 2020-2024](https://mbta-massdot.opendata.arcgis.com/search?tags=bus)
 - **Survey Data**: [MBTA 2022-2024 System-Wide Passenger Survey (Pooled)](https://gis.data.mass.gov/datasets/MassDOT::mbta-2024-system-wide-passenger-survey/about)
 
-### Validation Data (2025)
-- **Reliability Data**: [MBTA Bus Arrival Departure Times 2025](https://mbta-massdot.opendata.arcgis.com/datasets/924df13d845f4907bb6a6c3ed380d57a/about)
+### Validation Data (2025-2026)
+- **Reliability Data 2025**: [MBTA Bus Arrival Departure Times 2025](https://mbta-massdot.opendata.arcgis.com/datasets/924df13d845f4907bb6a6c3ed380d57a/about)
+- **Reliability Data 2026**: [MBTA Bus Arrival Departure Times 2026](https://mbta-massdot.opendata.arcgis.com/datasets/9d8a8cad277545c984c1b25ed10b7d3c/about) (partial year)
 
 ### Demographic Data
 - **Census Data**: [2020 Census for Boston](https://data.boston.gov/dataset/2020-census-for-boston)
@@ -122,6 +123,7 @@ SPARK - HUB - CS506
 - zztangbu@bu.edu
 - lzj2729@bu.edu
 - ljf628@bu.edu
+- yaobc@bu.edu
 
 ## License
 
