@@ -90,6 +90,12 @@ Boston University CS506 - Spring 2025
 
 SPARK - HUB - CS506
 
+### Authors
+
+- zztangbu@bu.edu
+- lzj2729@bu.edu
+- ljf628@bu.edu
+
 ## License
 
 This project is for educational purposes as part of BU CS506 coursework.
