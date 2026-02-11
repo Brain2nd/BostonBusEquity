@@ -105,6 +105,17 @@ cd BostonBusEquity
 pip install -r requirements.txt
 ```
 
+3. Download data (first time only):
+```bash
+python src/data/download_data.py
+```
+
+> **Important Notes for Team Members:**
+> - Data files (~20GB total) are NOT stored in Git - each person must download locally
+> - `git pull` will NOT overwrite your downloaded data (data folder is in .gitignore)
+> - If download is interrupted, just run the script again - it supports resume
+> - Check download status anytime: `python src/data/download_data.py --status`
+
 ## References
 
 - [Livable Streets Report](https://www.livablestreets.info/)
