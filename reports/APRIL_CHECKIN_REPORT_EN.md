@@ -1,11 +1,24 @@
 # Boston Bus Equity April Check-In Report
 
+## Stage Change Summary
+
+This report focuses on the **new work added in the April stage**.
+
+Compared with the earlier project stages, the main changes are:
+
+1. **added a realtime delay inference pipeline**
+2. **connected the model to the official MBTA V3 live API**
+3. **added baseline delay evaluation for quantitative comparison**
+4. **validated the stage with real historical data plus at least one real live example**
+
+The rest of this document explains these new additions in detail.
+
 ## 1. Project Description and Motivation
 
 ### 1.1 Project topic
 
 This project studies **MBTA bus service equity and delay prediction in Boston**.  
-The April stage extends the earlier offline analysis into a more operational direction by adding:
+The **new additions in the April stage** extend the earlier offline analysis into a more operational direction by adding:
 
 1. a **realtime delay inference pipeline**
 2. a **baseline delay evaluation layer**
@@ -135,7 +148,8 @@ Confirmed local status:
 2. total size about `15.282 GB`
 3. years covered: `2021-2026`
 
-This means the April stage does **not** switch to a different offline training dataset.
+This means the April stage does **not** switch to a different offline training dataset.  
+The **change in this stage is the realtime input path**, not a replacement of the historical training data source.
 
 ### 4.2 Live data source
 
@@ -161,6 +175,8 @@ Realtime data collection:
 1. API-based collection
 2. query MBTA V3 at inference time
 3. no long-running background polling service at this stage
+
+This is an important **stage change** because earlier work was mostly offline, while this stage adds an explicit live-data access path.
 
 This satisfies the proposal rubric requirement to identify data sources and explain how data is collected.
 
@@ -199,6 +215,11 @@ This means:
 
 1. the April stage did not retrain a new online-only model
 2. the main work was to connect the existing model to live inputs
+
+This is one of the most important **April-stage changes to emphasize**:
+
+1. **the model itself was not replaced**
+2. **the inference pathway around the model was upgraded for realtime use**
 
 #### Decision 3: build a realtime bundle instead of loading the raw checkpoint directly
 
@@ -263,6 +284,8 @@ This gives the project:
 3. reportable evidence that the pipeline works on real data
 
 ## 6. Implementation Deliverables
+
+This section lists the **actual code-level changes added in the April stage**.
 
 ### 6.1 Realtime inference modules added
 
@@ -343,7 +366,7 @@ Reasons for selecting `V2 MLP`:
 
 ### 7.3 Baseline methods added
 
-The following baselines were added:
+The following baselines were **newly added in this stage**:
 
 1. `zero_delay`
 2. `global_mean`
@@ -394,6 +417,8 @@ Why this visualization is useful:
 3. it demonstrates direct comparability between local model output and MBTA live prediction
 
 ## 9. Preliminary Results
+
+This section summarizes the **new results produced in the April stage**.
 
 ### 9.1 Baseline results
 
@@ -448,7 +473,7 @@ Interpretation:
 4. the project can compare local model output against MBTA live prediction
 
 This does **not** yet prove that the local model outperforms MBTA's live prediction.  
-It proves that the realtime inference chain is functioning on real inputs.
+It proves that the **new realtime inference chain added in this stage** is functioning on real inputs.
 
 ## 10. Results and Interpretation
 
@@ -468,6 +493,8 @@ The project can now claim:
 2. the official live API is integrated
 3. the local model can produce live predictions
 4. baseline comparisons are available
+
+These are the main **April-stage deliverable changes** that should be emphasized in the check-in.
 
 ### 10.2 What the current results do not yet show
 
