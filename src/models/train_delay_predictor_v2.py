@@ -30,6 +30,8 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
+from src.models.v2_mlp import V2MLPPredictor
+
 # Set random seeds
 SEED = 42
 np.random.seed(SEED)
@@ -260,24 +262,7 @@ def load_and_preprocess_data_v2_temporal(sample_size: int = 500000):
 # Models
 # =============================================================================
 
-class MLPPredictor(nn.Module):
-    def __init__(self, input_size: int, hidden_sizes: list = [128, 64, 32], dropout: float = 0.2):
-        super().__init__()
-        layers = []
-        prev_size = input_size
-        for hidden_size in hidden_sizes:
-            layers.extend([
-                nn.Linear(prev_size, hidden_size),
-                nn.ReLU(),
-                nn.BatchNorm1d(hidden_size),
-                nn.Dropout(dropout)
-            ])
-            prev_size = hidden_size
-        layers.append(nn.Linear(prev_size, 1))
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.network(x)
+MLPPredictor = V2MLPPredictor
 
 
 class LSTMPredictor(nn.Module):

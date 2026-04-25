@@ -73,6 +73,76 @@ The MBTA serves over 1 million people daily, with an estimated added economic va
 ### Extended Question
 8. Can we accurately predict bus delays using machine learning with advanced feature engineering?
 
+## Realtime Inference
+
+The repository now includes a local realtime inference path built around the causal `V2` MLP model. This path is intended for online usage because its features can be constructed from a single scheduled stop event without requiring future information.
+
+### Why V2 for Realtime
+
+- `V2` uses causal features only: route/stop encodings, calendar features, scheduled headway, and training-period historical aggregates.
+- `V3` remains the strongest offline research model, but its wavelet and lag-based features depend on historical windows that are not safe to reconstruct for stateless online requests.
+
+### Build a Realtime Bundle
+
+```bash
+python -m src.inference.build_bundle
+```
+
+Default output:
+
+```text
+models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt
+```
+
+The bundle stores:
+- model weights and network config
+- feature column order
+- numeric scaler parameters
+- route/stop/direction mappings
+- training-period route, stop, hour, and route-hour statistics
+
+### Run the Local API
+
+```bash
+python -m src.inference.serve --bundle models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt --host 127.0.0.1 --port 8000
+```
+
+Available endpoints:
+- `GET /health`
+- `POST /predict`
+- `POST /predict/mbta`
+
+`/predict` accepts:
+- `route_id`
+- `stop_id`
+- `scheduled_time`
+- `scheduled_headway` (optional)
+- `direction_id` (optional)
+
+`/predict/mbta` can fetch the next matching scheduled stop event from the official MBTA V3 API and run the same model on top of that live lookup. The response also returns the MBTA-reported live prediction delay when it is available, so you can compare your model output against the agency's live prediction.
+
+## Baseline Delay Evaluation
+
+To compare the model work against simple temporal heuristics, run:
+
+```bash
+python -m src.models.evaluate_delay_baselines
+```
+
+This writes:
+
+```text
+reports/delay_prediction_baselines_temporal.csv
+```
+
+The baseline report includes:
+- zero-delay baseline
+- global mean baseline
+- route mean baseline
+- stop mean baseline
+- hour mean baseline
+- route-hour mean baseline
+
 ## Project Structure
 
 ```
@@ -305,6 +375,14 @@ All base project requirements (Q1-Q7) completed within one week:
 | `src/models/snn_delay_model.py` | NeuronSpark SNN architecture |
 | `src/models/train_snn_delay.py` | SNN training pipeline |
 | `NeuronSpark/` | NeuronSpark reference implementation |
+| `src/inference/build_bundle.py` | Realtime bundle generation for the V2 MLP |
+| `src/inference/runtime.py` | Stateless realtime feature construction and inference |
+| `src/inference/api.py` | FastAPI endpoints for local and MBTA-backed prediction |
+
+### Realtime vs Offline
+
+- `V2 MLP` is the supported online model.
+- `V3` and later experimental models should be treated as offline research models unless they are explicitly reworked for causal online inputs.
 
 ### Results Locations
 | File | Description |
