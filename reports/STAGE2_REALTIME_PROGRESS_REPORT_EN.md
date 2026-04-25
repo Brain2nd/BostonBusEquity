@@ -76,27 +76,7 @@ Added baselines:
 5. `hour_mean`
 6. `route_hour_mean`
 
-## 4. Real execution setup for this stage
-
-### Environment used
-
-This stage was run in:
-
-```text
-D:\Anaconda3\envs\506-final
-```
-
-### GPU status
-
-The machine has an NVIDIA GPU available, but the selected environment currently uses CPU-only PyTorch.
-
-This is acceptable for this stage because:
-
-1. realtime inference is lightweight
-2. baseline evaluation is mostly pandas / sklearn work
-3. the main bottleneck is CSV loading and preprocessing, not neural network forward passes
-
-### Real-data subset strategy
+## 4. Real-data subset strategy
 
 Because the raw arrival/departure archive is large, this stage uses a **real-data subset strategy** rather than a full 15GB reprocessing run.
 
