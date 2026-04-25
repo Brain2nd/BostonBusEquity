@@ -63,13 +63,14 @@ class MBTARealtimeClient:
         schedule_params = {
             "filter[route]": route_id,
             "filter[stop]": stop_id,
-            "sort": "departure_time",
+            "filter[min_time]": now_ts.strftime("%H:%M"),
+            "sort": "arrival_time",
             "page[limit]": 5,
         }
         prediction_params = {
             "filter[route]": route_id,
             "filter[stop]": stop_id,
-            "sort": "departure_time",
+            "sort": "arrival_time",
             "page[limit]": 3,
         }
         if direction_id is not None:
@@ -118,6 +119,8 @@ class MBTARealtimeClient:
             prediction_ts = pd.Timestamp(departure_time)
             if prediction_ts.tzinfo is None:
                 prediction_ts = prediction_ts.tz_localize(LOCAL_TZ)
+            if prediction_ts < now_ts:
+                continue
             scheduled_ts = pd.Timestamp(schedule_record["departure_time"])
             if scheduled_ts.tzinfo is None:
                 scheduled_ts = scheduled_ts.tz_localize(LOCAL_TZ)

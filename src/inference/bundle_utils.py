@@ -94,12 +94,19 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def canonicalize_route_id(value: object) -> str:
+    route_id = str(value).strip()
+    if route_id.isdigit():
+        return str(int(route_id))
+    return route_id
+
+
 def parse_arrival_departure_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     df = normalize_columns(df)
     required = [col for col in SOURCE_COLUMNS if col in df.columns]
     df = df[required].copy()
 
-    df["route_id"] = df["route_id"].astype(str)
+    df["route_id"] = df["route_id"].map(canonicalize_route_id)
     df["stop_id"] = df["stop_id"].astype(str)
     df["direction_id"] = df.get("direction_id", "Unknown").fillna("Unknown").astype(str)
 
@@ -140,6 +147,9 @@ def load_arrival_departure_dataframe(
     parquet_path: Path | None = None,
     raw_dir: Path | None = None,
     max_files: int | None = None,
+    sample_per_file: int | None = None,
+    random_state: int = 42,
+    years: list[int] | None = None,
 ) -> pd.DataFrame:
     parquet_path = parquet_path or (DATA_PROCESSED / "arrival_departure.parquet")
     raw_dir = raw_dir or (DATA_RAW / "arrival_departure")
@@ -149,6 +159,12 @@ def load_arrival_departure_dataframe(
         return parse_arrival_departure_dataframe(df)
 
     csv_files = sorted(raw_dir.glob("**/*.csv"))
+    if years is not None:
+        year_tokens = {str(year) for year in years}
+        csv_files = [
+            csv_path for csv_path in csv_files
+            if any(token in str(csv_path) for token in year_tokens)
+        ]
     if max_files is not None:
         csv_files = csv_files[:max_files]
     if not csv_files:
@@ -159,7 +175,10 @@ def load_arrival_departure_dataframe(
     frames: list[pd.DataFrame] = []
     for csv_path in csv_files:
         frame = pd.read_csv(csv_path, usecols=lambda col: col in SOURCE_COLUMNS or col == "direction")
-        frames.append(parse_arrival_departure_dataframe(frame))
+        frame = parse_arrival_departure_dataframe(frame)
+        if sample_per_file is not None and len(frame) > sample_per_file:
+            frame = frame.sample(n=sample_per_file, random_state=random_state)
+        frames.append(frame)
 
     return pd.concat(frames, ignore_index=True)
 
@@ -251,8 +270,11 @@ def make_feature_matrix(df: pd.DataFrame) -> np.ndarray:
     return df[V2_FEATURE_COLUMNS].to_numpy(dtype=np.float32)
 
 
-def load_v2_training_frames(max_files: int | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    df = load_arrival_departure_dataframe(max_files=max_files)
+def load_v2_training_frames(
+    max_files: int | None = None,
+    sample_per_file: int | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    df = load_arrival_departure_dataframe(max_files=max_files, sample_per_file=sample_per_file)
     df = add_v2_time_features(df)
     return split_temporal_train_test(df)
 

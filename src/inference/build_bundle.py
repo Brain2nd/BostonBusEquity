@@ -33,10 +33,18 @@ def build_realtime_bundle(
     checkpoint_path: Path = DEFAULT_CHECKPOINT,
     output_path: Path = DEFAULT_BUNDLE,
     max_files: int | None = None,
+    sample_per_file: int | None = 12_000,
     max_train_rows: int = 500_000,
     max_test_rows: int = 100_000,
+    years: list[int] | None = None,
 ) -> dict:
-    df = load_arrival_departure_dataframe(max_files=max_files)
+    checkpoint_path = Path(checkpoint_path)
+    output_path = Path(output_path)
+    df = load_arrival_departure_dataframe(
+        max_files=max_files,
+        sample_per_file=sample_per_file,
+        years=years,
+    )
     df = add_v2_time_features(df)
     train_df, test_df = split_temporal_train_test(df)
     if train_df.empty:
@@ -95,6 +103,8 @@ def build_realtime_bundle(
             "train_rows_used": int(len(train_df)),
             "test_rows_seen": int(len(test_df)),
             "max_files": max_files,
+            "sample_per_file": sample_per_file,
+            "years": years,
         },
     }
 
@@ -108,19 +118,25 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--output", type=Path, default=DEFAULT_BUNDLE)
     parser.add_argument("--max-files", type=int, default=None)
+    parser.add_argument("--sample-per-file", type=int, default=12_000)
     parser.add_argument("--max-train-rows", type=int, default=500_000)
     parser.add_argument("--max-test-rows", type=int, default=100_000)
+    parser.add_argument("--years", nargs="+", type=int, default=None)
     args = parser.parse_args()
 
     bundle = build_realtime_bundle(
         checkpoint_path=args.checkpoint,
         output_path=args.output,
         max_files=args.max_files,
+        sample_per_file=args.sample_per_file,
         max_train_rows=args.max_train_rows,
         max_test_rows=args.max_test_rows,
+        years=args.years,
     )
     print(f"Bundle saved to: {args.output}")
     print(f"Train rows used: {bundle['build_metadata']['train_rows_used']:,}")
+    print(f"Per-file sample: {bundle['build_metadata']['sample_per_file']}")
+    print(f"Years: {bundle['build_metadata']['years']}")
     print(f"Source parquet exists: {bundle['build_metadata']['source_parquet_exists']}")
 
 

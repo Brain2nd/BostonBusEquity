@@ -12,10 +12,14 @@ import numpy as np
 import pandas as pd
 import torch
 
-from src.inference.bundle_utils import V2_FEATURE_COLUMNS
+from src.inference.bundle_utils import V2_FEATURE_COLUMNS, canonicalize_route_id
 from src.models.v2_mlp import V2MLPPredictor
 
 LOCAL_TZ = ZoneInfo("America/New_York")
+MBTA_DIRECTION_LABELS = {
+    "0": "Outbound",
+    "1": "Inbound",
+}
 
 
 class InferenceInputError(ValueError):
@@ -65,13 +69,14 @@ class RealtimeDelayPredictor:
     def build_feature_vector(self, request: PredictRequest) -> tuple[np.ndarray, list[str]]:
         used_defaults: list[str] = []
 
-        route_id = str(request.route_id)
+        route_id = canonicalize_route_id(request.route_id)
         stop_id = str(request.stop_id)
         if request.direction_id is None:
             direction_id = "Unknown"
             used_defaults.append("direction_id")
         else:
             direction_id = str(request.direction_id)
+            direction_id = MBTA_DIRECTION_LABELS.get(direction_id, direction_id)
 
         if route_id not in self.mappings["route_id"]:
             raise InferenceInputError(f"Unknown route_id: {route_id}")

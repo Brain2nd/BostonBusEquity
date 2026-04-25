@@ -35,8 +35,16 @@ def regression_metrics(name: str, y_true: np.ndarray, y_pred: np.ndarray) -> dic
     }
 
 
-def evaluate_baselines(max_files: int | None = None) -> pd.DataFrame:
-    df = load_arrival_departure_dataframe(max_files=max_files)
+def evaluate_baselines(
+    max_files: int | None = None,
+    sample_per_file: int | None = 12_000,
+    years: list[int] | None = None,
+) -> pd.DataFrame:
+    df = load_arrival_departure_dataframe(
+        max_files=max_files,
+        sample_per_file=sample_per_file,
+        years=years,
+    )
     df = add_v2_time_features(df)
     train_df, test_df = split_temporal_train_test(df)
     if train_df.empty or test_df.empty:
