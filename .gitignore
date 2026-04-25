@@ -122,5 +122,22 @@ data/external/*
 credentials/
 secrets/
 
+# Local generated runtime artifacts
+.pytest_tmp/
+pytest-cache-files-*/
+tmp*/
+catboost_info/
+reports/dashboard_server_*.log
+reports/tmp_*
+reports/figures/tmp_*
+reports/live_prediction_snapshots/
+models/tmp_*
+
+# Small report CSVs that are useful for grading/reproducibility
+!reports/delay_prediction_v4_model_scores.csv
+!reports/delay_prediction_v4_model_sweep_summary.csv
+!reports/delay_prediction_v4_score_best_bundle_train_summary.csv
+!reports/mbta_realtime_official_vs_model.csv
+
 # Claude
 CLAUDE.md

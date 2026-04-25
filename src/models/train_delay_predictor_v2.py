@@ -30,6 +30,21 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
+try:
+    from .v2_delay_predictor import (
+        V2_FEATURE_COLUMNS,
+        V2_MLP_DROPOUT,
+        V2_MLP_HIDDEN_SIZES,
+        V2MLPPredictor,
+    )
+except ImportError:
+    from v2_delay_predictor import (  # type: ignore
+        V2_FEATURE_COLUMNS,
+        V2_MLP_DROPOUT,
+        V2_MLP_HIDDEN_SIZES,
+        V2MLPPredictor,
+    )
+
 # Set random seeds
 SEED = 42
 np.random.seed(SEED)
@@ -214,17 +229,7 @@ def load_and_preprocess_data_v2_temporal(sample_size: int = 500000):
     # =========================================
     # Feature selection (V2)
     # =========================================
-    feature_columns = [
-        # Original features
-        'is_weekend', 'is_rush_hour',
-        'route_encoded', 'stop_encoded', 'direction_encoded', 'scheduled_headway',
-        # V2: Cyclical encoding
-        'hour_sin', 'hour_cos', 'dow_sin', 'dow_cos', 'month_sin', 'month_cos',
-        # V2: Historical statistics (from training data only)
-        'route_delay_mean', 'route_delay_std',
-        'stop_delay_mean', 'stop_delay_std',
-        'hour_delay_mean', 'route_hour_delay_mean'
-    ]
+    feature_columns = list(V2_FEATURE_COLUMNS)
 
     X_train = train_df[feature_columns].values
     y_train = train_df['delay_minutes'].values.reshape(-1, 1)
@@ -259,26 +264,6 @@ def load_and_preprocess_data_v2_temporal(sample_size: int = 500000):
 # =============================================================================
 # Models
 # =============================================================================
-
-class MLPPredictor(nn.Module):
-    def __init__(self, input_size: int, hidden_sizes: list = [128, 64, 32], dropout: float = 0.2):
-        super().__init__()
-        layers = []
-        prev_size = input_size
-        for hidden_size in hidden_sizes:
-            layers.extend([
-                nn.Linear(prev_size, hidden_size),
-                nn.ReLU(),
-                nn.BatchNorm1d(hidden_size),
-                nn.Dropout(dropout)
-            ])
-            prev_size = hidden_size
-        layers.append(nn.Linear(prev_size, 1))
-        self.network = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.network(x)
-
 
 class LSTMPredictor(nn.Module):
     def __init__(self, input_size: int, hidden_size: int = 64, num_layers: int = 2, dropout: float = 0.2):
@@ -554,7 +539,11 @@ def main():
     # Models
     input_size = X_train.shape[1]
     models = {
-        'MLP': MLPPredictor(input_size=input_size, hidden_sizes=[128, 64, 32], dropout=0.2),
+        'MLP': V2MLPPredictor(
+            input_size=input_size,
+            hidden_sizes=V2_MLP_HIDDEN_SIZES,
+            dropout=V2_MLP_DROPOUT,
+        ),
         'LSTM': LSTMPredictor(input_size=input_size, hidden_size=64, num_layers=2, dropout=0.2),
         'GRU': GRUPredictor(input_size=input_size, hidden_size=64, num_layers=2, dropout=0.2)
     }
