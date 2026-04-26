@@ -940,34 +940,17 @@ def selection_options(runtime: DelayPredictorRuntime) -> dict[str, Any]:
 
 
 def project_summary(runtime: DelayPredictorRuntime) -> dict[str, Any]:
-    summary = _read_sweep_summary()
-    best_final_mae = summary.get("best_final_mae")
-    v2_sample_mae = summary.get("v2_sample_mae")
-    model_delta = None
-    if best_final_mae is not None and v2_sample_mae is not None:
-        model_delta = float(best_final_mae - v2_sample_mae)
-    kpis = list(PROJECT_KPIS)
-    if best_final_mae is not None:
-        kpis.append(
-            {
-                "label": "Best local model MAE",
-                "value": f"{best_final_mae:.2f} min",
-                "detail": "Best V4 final prior-year retrain evaluated on 2026 true delay labels.",
-                "source": "V4 model sweep",
-            }
-        )
+    """Headline numbers for the dashboard. All KPIs trace back to FINAL_REPORT.md."""
     return {
         "title": "Boston Bus Equity: Realtime Delay Prediction Dashboard",
         "subtitle": "Service equity analysis plus local true-delay prediction for MBTA buses.",
-        "kpis": kpis,
+        "kpis": list(PROJECT_KPIS),
         "model": {
             "health": runtime.health(),
-            "best_model": summary.get("best_model"),
-            "best_feature_profile": summary.get("best_feature_profile"),
-            "best_final_mae": best_final_mae,
-            "v2_sample_mae": v2_sample_mae,
-            "delta_vs_v2": model_delta,
-            "accuracy_note": "MAE is measured against true delay actual - scheduled. MBTA official comparison is not ground truth.",
+            "best_model": "V6 Transformer",
+            "best_test_R2": 0.9942,
+            "best_test_RMSE": 0.46,
+            "accuracy_note": "Numbers cite our V1 -> V6 progression in reports/DELAY_PREDICTION_COMPARISON_REPORT.md.",
         },
         "data": {
             "processed_parquet": str(PROJECT_ROOT / "data" / "processed" / "arrival_departure.parquet"),
@@ -1078,6 +1061,115 @@ def model_metrics() -> dict[str, Any]:
                 "rolling/FFT/wavelet windows that need recent delay history per route-stop."
             ),
         },
+    }
+
+
+def defense_qa() -> dict[str, list[dict[str, str]]]:
+    """Q&A pairs lifted from MARCH_CHECKIN_SPEAKING_NOTES.md for live defense.
+
+    Each item is a question commonly asked during the project's check-ins,
+    with the prepared answer. Surfaced through /api/defense-qa so the
+    dashboard can render them as collapsible cards.
+    """
+    return {
+        "items": [
+            {
+                "category": "Data",
+                "q": "Why didn't you use 2018-2019 data?",
+                "a": (
+                    "MBTA Open Data Portal no longer provides arrival/departure data for those "
+                    "years. We document this as a known limitation. Ridership data goes back to "
+                    "2016, so the pre-pandemic comparison for Q1 still works."
+                ),
+            },
+            {
+                "category": "Modeling",
+                "q": "Isn't R^2 of 0.99 suspiciously high? Could there be data leakage?",
+                "a": (
+                    "We took extensive precautions: strict temporal split (train year < 2025, "
+                    "test year >= 2025), features computed only from past values via series.shift(k) "
+                    "and delays[i-window:i], and scaler.fit() called only on training data. The high "
+                    "R^2 reflects strong delay autocorrelation - if the previous five buses on this "
+                    "stop were 10 minutes late, the next one likely is too. Sanity check: V1 with "
+                    "the same split gives R^2 = -0.07, which wouldn't happen if leakage were systematic."
+                ),
+            },
+            {
+                "category": "Modeling",
+                "q": "Why are V1 results negative R^2?",
+                "a": (
+                    "Negative R^2 means the model predicts worse than the sample mean. Static features "
+                    "(route, hour, day) alone have very little predictive power for individual delays. "
+                    "It's actually our key finding: delay prediction requires temporal context, not "
+                    "just static attributes. This motivates the entire V3 lag/FFT/wavelet pipeline."
+                ),
+            },
+            {
+                "category": "Modeling",
+                "q": "Why did you try a Spiking Neural Network (NeuronSpark / V5)?",
+                "a": (
+                    "Extended research: we wanted to test whether neuromorphic computing - "
+                    "specifically SNNs with dynamic membrane parameters and K-bit binary spike "
+                    "encoding - could match standard architectures on time-series regression. "
+                    "V5 NeuronSpark achieves R^2 = 0.9897, beating GRU, but loses to V6 Transformer "
+                    "at the same ~1.5 M parameter count. SNN's main advantage is energy efficiency "
+                    "on neuromorphic hardware, which is not exercised in our GPU benchmark."
+                ),
+            },
+            {
+                "category": "Equity",
+                "q": "How does this help the City of Boston?",
+                "a": (
+                    "Short-term: the V6 Transformer (RMSE 0.46 min) can power real-time passenger "
+                    "information with accurate ETAs. Medium-term: dispatchers can intervene before "
+                    "delays cascade. Long-term: our equity analysis (41% higher delays on the 15 "
+                    "target routes serving underserved communities) provides quantitative evidence "
+                    "for prioritizing infrastructure investment in those neighborhoods."
+                ),
+            },
+            {
+                "category": "Modeling",
+                "q": "What is the practical significance of 0.46-minute RMSE?",
+                "a": (
+                    "Predictions are accurate to within ~28 seconds on average. For a system whose "
+                    "average delay is 7.5 minutes and 95th percentile is 42 minutes, sub-30-second "
+                    "RMSE is well within the precision needed for passenger-facing ETAs."
+                ),
+            },
+            {
+                "category": "Future work",
+                "q": "Why not use weather or traffic data as features?",
+                "a": (
+                    "Good suggestion for Phase 3. Our current features come exclusively from MBTA "
+                    "data because that's what the live API and historical Parquet provide directly. "
+                    "External sources (NOAA weather, traffic-cam feeds) would require additional "
+                    "data integration and could particularly help the V4 multi-step task where our "
+                    "models currently struggle (R^2 ~ 0.08)."
+                ),
+            },
+            {
+                "category": "Modeling",
+                "q": "Why is feature engineering more important than the model architecture?",
+                "a": (
+                    "Empirical evidence from our experiments: V1 -> V3 lifted R^2 from -0.07 to "
+                    "0.9846 by changing only the features (still using GRU). Within V3, switching "
+                    "GRU -> LSTM -> MLP changes R^2 by less than 0.005. The +1.05 absolute R^2 "
+                    "gain came from adding lag/FFT/wavelet features, not from a more powerful model."
+                ),
+            },
+            {
+                "category": "Equity",
+                "q": "Why did you find no demographic correlation despite target routes being worse?",
+                "a": (
+                    "Route-level Pearson correlation between mean delay and minority percentage is "
+                    "-0.007 (p = 0.96). However, the 15 routes Livable Streets identifies as serving "
+                    "underserved communities do show 41% higher delays. Reconciliation: equity "
+                    "disadvantage operates through *which routes* serve vulnerable neighborhoods "
+                    "and how those routes are physically planned, not through systematic per-route "
+                    "demographic discrimination."
+                ),
+            },
+        ],
     }
 
 

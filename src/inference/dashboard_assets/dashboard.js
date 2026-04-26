@@ -798,13 +798,14 @@ function liveForecastLayout(title, yTitle, message, xRangeOverride = undefined) 
     title: { text: title, x: 0, font: { size: 15 } },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(255,250,242,0.7)",
-    margin: { l: 60, r: 24, t: 86, b: 72 },
+    margin: { l: 70, r: 28, t: 92, b: 110 },
     xaxis: {
       title: "Scheduled time",
       gridcolor: "rgba(101,115,134,0.22)",
       zeroline: false,
       range: xRange,
-      rangeslider: { visible: true, thickness: 0.08 },
+      // rangeslider disabled — it covered the legend and produced an
+      // unreadable mini chart at the bottom of the panel.
     },
     yaxis: {
       title: yTitle,
@@ -818,13 +819,21 @@ function liveForecastLayout(title, yTitle, message, xRangeOverride = undefined) 
         y: 1.14,
         xref: "paper",
         yref: "paper",
-        text: "Blue is MBTA's current live window. Red is the latest local forecast. The shaded band is held-out RMSE uncertainty, not added noise.",
+        text: "Blue: MBTA live window. Red: local forecast. Shaded band: held-out RMSE uncertainty.",
         showarrow: false,
         align: "left",
         font: { size: 11, color: "#657386" },
       },
     ],
-    legend: { orientation: "h", y: -0.22 },
+    legend: {
+      orientation: "h",
+      y: -0.32,
+      x: 0,
+      xanchor: "left",
+      yanchor: "top",
+      bgcolor: "rgba(255,250,242,0.0)",
+      font: { size: 12 },
+    },
     font: { family: "Aptos, Segoe UI, sans-serif", color: "#17212b" },
   };
 }
@@ -1003,19 +1012,26 @@ function chartLayout(title, yTitleOrXTitle, options = {}) {
     title: { text: title, x: 0, font: { size: 15 } },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(255,250,242,0.7)",
-    margin: { l: horizontal ? 160 : 54, r: 22, t: 52, b: 52 },
+    margin: { l: horizontal ? 160 : 60, r: 24, t: 56, b: 84 },
     xaxis: {
       title: horizontal ? yTitleOrXTitle : "",
       gridcolor: "rgba(101,115,134,0.22)",
       zeroline: false,
-      rangeslider: options.rangeSlider && !horizontal ? { visible: true, thickness: 0.08 } : undefined,
+      // rangeslider disabled site-wide: it kept overlapping legends.
     },
     yaxis: {
       title: horizontal ? "" : yTitleOrXTitle,
       gridcolor: "rgba(101,115,134,0.22)",
       zeroline: false,
     },
-    legend: { orientation: "h", y: -0.18 },
+    legend: {
+      orientation: "h",
+      y: -0.28,
+      x: 0,
+      xanchor: "left",
+      yanchor: "top",
+      font: { size: 12 },
+    },
     font: { family: "Aptos, Segoe UI, sans-serif", color: "#17212b" },
   };
 }
@@ -1062,6 +1078,49 @@ function readableError(error) {
   }
 }
 
+function renderDefenseQA(payload) {
+  const items = payload.items || [];
+  state.qaItems = items;
+  const grid = document.getElementById("qa-grid");
+  const filterBar = document.getElementById("qa-filter");
+  if (!grid || !filterBar) return;
+
+  const categories = ["All", ...Array.from(new Set(items.map((it) => it.category)))];
+  filterBar.innerHTML = categories
+    .map(
+      (c, i) =>
+        `<button class="filter-button${i === 0 ? " active" : ""}" data-qa-cat="${c}">${c}</button>`,
+    )
+    .join("");
+
+  function paint(category) {
+    const visible = category === "All" ? items : items.filter((i) => i.category === category);
+    grid.innerHTML = visible
+      .map(
+        (it, idx) => `
+          <details class="qa-card" ${idx === 0 ? "open" : ""}>
+            <summary>
+              <span class="tag">${it.category}</span>
+              <strong>${it.q}</strong>
+            </summary>
+            <p>${it.a}</p>
+          </details>
+        `,
+      )
+      .join("");
+  }
+
+  filterBar.querySelectorAll(".filter-button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      filterBar.querySelectorAll(".filter-button").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      paint(btn.dataset.qaCat);
+    });
+  });
+
+  paint("All");
+}
+
 function renderModelPicker(payload) {
   const select = document.getElementById("model-select");
   if (!select) return;
@@ -1095,7 +1154,7 @@ async function init() {
   setDefaultTime();
   document.getElementById("predict-form").addEventListener("submit", handlePredict);
   document.getElementById("live-form").addEventListener("submit", handleLiveCompare);
-  const [summary, visualPayload, metricsPayload, notesPayload, optionsPayload, modelsPayload] =
+  const [summary, visualPayload, metricsPayload, notesPayload, optionsPayload, modelsPayload, qaPayload] =
     await Promise.all([
       fetchJson("/api/project-summary"),
       fetchJson("/api/visualizations"),
@@ -1103,6 +1162,7 @@ async function init() {
       fetchJson("/api/data-model-notes"),
       fetchJson("/api/options"),
       fetchJson("/api/models"),
+      fetchJson("/api/defense-qa"),
     ]);
   renderSummary(summary);
   renderVisualizations(visualPayload);
@@ -1110,6 +1170,7 @@ async function init() {
   renderNotes(notesPayload);
   renderSelectionOptions(optionsPayload);
   renderModelPicker(modelsPayload);
+  renderDefenseQA(qaPayload);
   refreshStaticFigures();
   renderPredictionHorizon({ rows: [] });
   renderLiveChart([]);

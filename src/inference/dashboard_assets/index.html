@@ -4,17 +4,20 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boston Bus Equity Realtime Dashboard</title>
-    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-multimodel4" />
+    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-defenseqa5" />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   </head>
   <body>
     <header class="hero">
       <nav class="nav">
         <span class="brand">Boston Bus Equity</span>
+        <a href="#background">Problem definition</a>
+        <a href="#overview">Findings</a>
         <a href="#realtime">Realtime prediction</a>
         <a href="#visuals">Visual evidence</a>
         <a href="#modeling">Modeling</a>
         <a href="#pipeline">Pipeline</a>
+        <a href="#qa">Q&amp;A</a>
       </nav>
       <section class="hero-grid">
         <div>
@@ -41,13 +44,66 @@
     </header>
 
     <main>
+      <section class="section" id="background">
+        <div class="section-heading">
+          <p class="eyebrow">Problem definition</p>
+          <h2>What this project asks and why it matters</h2>
+        </div>
+        <div class="background-grid">
+          <article class="panel background-card">
+            <h3>The problem</h3>
+            <p>
+              The MBTA serves over 1 million riders per day and adds an estimated $11.5 billion
+              per year to the Greater Boston economy. Yet only <strong>31.7%</strong> of buses
+              are on time, and the routes serving low-income and minority neighborhoods
+              consistently underperform. We need to (a) quantify how unequal the service is
+              and (b) build models that can predict delays accurately enough for real-time
+              passenger information.
+            </p>
+          </article>
+          <article class="panel background-card">
+            <h3>Two-part scope</h3>
+            <ul>
+              <li>
+                <strong>Q1 - Q7 equity analysis:</strong> ridership, travel times, wait
+                times, citywide delays, target-route gap, service disparities, demographic
+                correlations.
+              </li>
+              <li>
+                <strong>Q8 delay prediction (extended research):</strong> six iterations of
+                ML models on a strict temporal split (train less than 2025, test 2025+).
+              </li>
+            </ul>
+          </article>
+          <article class="panel background-card">
+            <h3>Data scale</h3>
+            <ul>
+              <li><strong>161 million</strong> bus arrival/departure records (2020-2026)</li>
+              <li><strong>~18 GB</strong> raw, converted to Parquet for fast I/O</li>
+              <li><strong>2,910</strong> bus stops mapped to <strong>22</strong> Boston neighborhoods</li>
+              <li><strong>210</strong> routes with demographic profiles built from Census/ACS</li>
+            </ul>
+          </article>
+          <article class="panel background-card">
+            <h3>Headline result</h3>
+            <p>
+              From V1 (R^2 = -0.07, worse than predicting the mean) to V6 Transformer
+              (R^2 = <strong>0.9942</strong>, RMSE = <strong>0.46 min</strong>) -
+              <strong>93%</strong> RMSE reduction across six iterations. Feature
+              engineering (lag + FFT + wavelet) drove most of the gain; model architecture
+              provided the final refinement.
+            </p>
+          </article>
+        </div>
+      </section>
+
       <section class="section" id="overview">
         <div class="section-heading">
           <p class="eyebrow">Project findings</p>
-          <h2>What we found</h2>
+          <h2>Headline numbers from the equity analysis</h2>
           <p>
-            These are the headline findings that connect bus operations to the project's
-            equity motivation.
+            These metrics connect bus operations to the equity motivation of the project.
+            Every number traces back to the report's Q1-Q8 sections.
           </p>
         </div>
         <div class="kpi-grid" id="kpi-grid"></div>
@@ -212,6 +268,20 @@
         </div>
         <div class="pipeline-grid" id="notes-grid"></div>
       </section>
+
+      <section class="section" id="qa">
+        <div class="section-heading">
+          <p class="eyebrow">Defense Q &amp; A</p>
+          <h2>Common questions and prepared answers</h2>
+          <p>
+            Click any question to expand the prepared answer. These mirror the Q &amp; A
+            block in <code>reports/MARCH_CHECKIN_SPEAKING_NOTES.md</code> so the talk
+            stays consistent with what is shown live on screen.
+          </p>
+        </div>
+        <div class="qa-filter" id="qa-filter"></div>
+        <div class="qa-grid" id="qa-grid"></div>
+      </section>
     </main>
 
     <footer class="footer">
@@ -222,6 +292,6 @@
       </p>
     </footer>
 
-    <script src="/assets/dashboard.js?v=20260426-multimodel4"></script>
+    <script src="/assets/dashboard.js?v=20260426-defenseqa5"></script>
   </body>
 </html>

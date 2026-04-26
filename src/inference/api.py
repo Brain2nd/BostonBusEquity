@@ -20,6 +20,7 @@ from .dashboard import (
     allowed_figure_path,
     asset_path,
     data_and_model_notes,
+    defense_qa,
     list_available_models,
     live_compare,
     live_enriched_forecast,
@@ -155,6 +156,10 @@ def create_app(bundle_path: str | Path) -> FastAPI:
     @app.get("/api/data-model-notes")
     def dashboard_data_model_notes() -> dict:
         return data_and_model_notes()
+
+    @app.get("/api/defense-qa")
+    def dashboard_defense_qa() -> dict:
+        return defense_qa()
 
     @app.get("/api/models")
     def dashboard_models() -> dict:
