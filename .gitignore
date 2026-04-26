@@ -145,8 +145,7 @@ CLAUDE.md
 # External research repo (cloned reference, not project source)
 NeuronSpark/
 
-# Local agent workspace
+# Codex / local agent workspace
+.codex/
 .agents/
-
-# Local generated stage artifacts
-models/delay_predictor_mlp_v2_realtime_bundle_stage2.pt
+codex/
