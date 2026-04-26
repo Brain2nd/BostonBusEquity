@@ -265,6 +265,18 @@ dt {
   margin-top: 8px;
 }
 
+.form-hint {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  padding: 14px 16px;
+  background: rgba(42, 157, 143, 0.08);
+  border-left: 3px solid var(--teal);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
 label {
   display: grid;
   gap: 6px;

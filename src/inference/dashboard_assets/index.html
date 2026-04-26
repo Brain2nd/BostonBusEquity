@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boston Bus Equity Realtime Dashboard</title>
-    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-spacing1" />
+    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-form2" />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   </head>
   <body>
@@ -79,16 +79,12 @@
               <input name="scheduled_headway" type="number" min="0" step="0.5" value="15" />
             </label>
             <label>
-              Direction ID
-              <input name="direction_id" value="0" />
-            </label>
-            <label>
-              Current stop sequence
-              <input name="current_stop_sequence" type="number" min="0" step="1" />
-            </label>
-            <label>
-              Vehicle speed
-              <input name="vehicle_speed" type="number" min="0" step="0.1" />
+              Direction
+              <select name="direction_id" data-direction-select>
+                <option value="">Auto / Unknown</option>
+                <option value="Outbound">Outbound (0)</option>
+                <option value="Inbound">Inbound (1)</option>
+              </select>
             </label>
             <label>
               Forecast horizon (hours)
@@ -98,6 +94,11 @@
               Forecast step (min)
               <input name="interval_minutes" type="number" min="5" max="120" step="5" value="15" />
             </label>
+            <p class="form-hint">
+              Vehicle telemetry (speed, current stop sequence) is auto-filled from
+              MBTA live data when relevant. The active V2 MLP model does not use
+              those fields; they are ignored at prediction time.
+            </p>
             <button class="button primary" type="submit">Predict delay</button>
           </form>
         </div>
@@ -128,8 +129,12 @@
               <select name="stop_id" data-stop-select required></select>
             </label>
             <label>
-              Direction ID
-              <input name="direction_id" value="0" />
+              Direction
+              <select name="direction_id">
+                <option value="">Auto / Unknown</option>
+                <option value="Outbound">Outbound (0)</option>
+                <option value="Inbound">Inbound (1)</option>
+              </select>
             </label>
             <label>
               Prediction rows
@@ -212,6 +217,6 @@
       </p>
     </footer>
 
-    <script src="/assets/dashboard.js?v=20260426-spacing1"></script>
+    <script src="/assets/dashboard.js?v=20260426-form2"></script>
   </body>
 </html>

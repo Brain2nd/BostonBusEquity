@@ -483,10 +483,13 @@ async function tryLiveEnrichedForecast(inferencePayload) {
 
 function buildPredictionPayload(form) {
   const payload = formPayload(form);
-  ["scheduled_headway", "current_stop_sequence", "vehicle_speed"].forEach((key) => {
+  ["scheduled_headway"].forEach((key) => {
     payload[key] = payload[key] === "" ? null : Number(payload[key]);
   });
   payload.direction_id = payload.direction_id || null;
+  // Vehicle telemetry fields (current_stop_sequence, vehicle_speed) are not
+  // collected from the user — they auto-populate via the live-enriched
+  // forecast endpoint when MBTA real-time data is available.
 
   const horizonHours = Math.min(Number(payload.horizon_hours || 3), 3);
   const intervalMinutes = Number(payload.interval_minutes || 15);
