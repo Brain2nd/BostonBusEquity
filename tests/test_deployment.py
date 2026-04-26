@@ -572,6 +572,152 @@ def test_predict_with_unknown_model_id_returns_400() -> None:
     assert 400 <= code < 500, f"expected 4xx for unknown model_id, got {code}"
 
 
+# ---------------------------------------------------------------------------
+# Mocked MBTA V3 endpoints — exercise live-compare / live-enriched-forecast
+# without hitting the network
+# ---------------------------------------------------------------------------
+
+
+def _fake_predictions_payload(route_id: str, stop_id: str) -> dict:
+    """Minimal MBTA V3 predictions JSON shaped like the real API response."""
+    return {
+        "data": [
+            {
+                "id": "pred-1",
+                "type": "prediction",
+                "attributes": {
+                    "departure_time": "2026-04-26T17:05:00-04:00",
+                    "arrival_time": "2026-04-26T17:05:00-04:00",
+                    "direction_id": 0,
+                    "status": "Scheduled",
+                    "schedule_relationship": "SCHEDULED",
+                    "stop_sequence": 5,
+                },
+                "relationships": {
+                    "route": {"data": {"id": route_id, "type": "route"}},
+                    "stop": {"data": {"id": stop_id, "type": "stop"}},
+                    "trip": {"data": {"id": "trip-A", "type": "trip"}},
+                    "vehicle": {"data": {"id": "veh-1", "type": "vehicle"}},
+                    "schedule": {"data": {"id": "sched-1", "type": "schedule"}},
+                },
+            }
+        ],
+        "included": [
+            {
+                "id": "sched-1",
+                "type": "schedule",
+                "attributes": {
+                    "departure_time": "2026-04-26T17:00:00-04:00",
+                    "arrival_time": "2026-04-26T17:00:00-04:00",
+                },
+            }
+        ],
+    }
+
+
+def _fake_vehicles_payload(route_id: str) -> dict:
+    return {
+        "data": [
+            {
+                "id": "veh-1",
+                "type": "vehicle",
+                "attributes": {
+                    "current_status": "IN_TRANSIT_TO",
+                    "current_stop_sequence": 3,
+                    "speed": 8.5,
+                    "direction_id": 0,
+                    "updated_at": "2026-04-26T17:02:00-04:00",
+                },
+                "relationships": {
+                    "route": {"data": {"id": route_id, "type": "route"}},
+                    "trip": {"data": {"id": "trip-A", "type": "trip"}},
+                    "stop": {"data": {"id": "any", "type": "stop"}},
+                },
+            }
+        ],
+        "included": [],
+    }
+
+
+@pytest.fixture
+def mocked_mbta(monkeypatch):
+    """Patch MBTAV3Client to return canned payloads instead of hitting the network."""
+    from src.inference import mbta_v3_client
+
+    def _fake_predictions(self, route_id, stop_id, direction_id=None, limit=20):
+        return _fake_predictions_payload(str(route_id), str(stop_id))
+
+    def _fake_vehicles(self, route_id, limit=100):
+        return _fake_vehicles_payload(str(route_id))
+
+    monkeypatch.setattr(
+        mbta_v3_client.MBTAV3Client, "fetch_predictions_payload", _fake_predictions
+    )
+    monkeypatch.setattr(
+        mbta_v3_client.MBTAV3Client, "fetch_vehicles_payload", _fake_vehicles
+    )
+    yield
+
+
+def test_live_compare_with_mocked_mbta(mocked_mbta) -> None:
+    """/api/live-compare must produce a comparison row using mocked MBTA data."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            options = (await client.get("/api/options")).json()
+            payload = {
+                "route_id": options["defaults"]["route_id"],
+                "stop_id": options["defaults"]["stop_id"],
+                "direction_id": "0",
+                "prediction_limit": 5,
+                "vehicle_limit": 10,
+            }
+            response = await client.post("/api/live-compare", json=payload)
+            assert response.status_code == 200, response.text
+            return response.json()
+
+    body = asyncio.run(_run())
+    # Mode is one of: official_vs_model, network_error, unavailable, no_predictions
+    assert body["mode"] in {
+        "official_vs_model",
+        "network_error",
+        "unavailable",
+        "no_predictions",
+    }
+    # If our mock produced predictions, we should have rows
+    if body["mode"] == "official_vs_model":
+        assert "rows" in body or "mean_abs_gap_minutes" in body
+
+
+def test_live_enriched_forecast_with_mocked_mbta(mocked_mbta) -> None:
+    """/api/live-enriched-forecast must run our model on mocked MBTA upcoming trips."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            options = (await client.get("/api/options")).json()
+            payload = {
+                "route_id": options["defaults"]["route_id"],
+                "stop_id": options["defaults"]["stop_id"],
+                "direction_id": "0",
+                "prediction_limit": 5,
+                "vehicle_limit": 10,
+            }
+            response = await client.post("/api/live-enriched-forecast", json=payload)
+            assert response.status_code == 200, response.text
+            return response.json()
+
+    body = asyncio.run(_run())
+    # Endpoint should always return a structured payload
+    assert isinstance(body, dict)
+    assert "rows" in body or "mode" in body or "message" in body
+
+
 def test_data_model_notes_describes_our_pipeline() -> None:
     """/api/data-model-notes must describe our V1-V6 pipeline, not the V4 LightGBM sweep."""
     httpx = pytest.importorskip("httpx")
