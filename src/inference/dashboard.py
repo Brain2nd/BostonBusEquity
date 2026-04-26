@@ -170,6 +170,18 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "backend": "v3_fixed_adapter",
         "note": "Stricter no-leakage V3 MLP, 41 features.",
     },
+    # === V4 Seq2Seq multistep (sequence-to-sequence) ===
+    {
+        "id": "v4_seq2seq_multistep",
+        "label": "V4 Seq2Seq-GRU - multistep (R^2=0.085, multi-step is HARD)",
+        "checkpoint": "delay_seq2seq_v4_quick.pt",
+        "feature_version": "v4",
+        "architecture": "Seq2Seq-GRU",
+        "test_R2": 0.0851,
+        "test_RMSE": 5.79,
+        "backend": "v4_seq2seq_adapter",
+        "note": "Predicts horizon=5 future delays autoregressively. Confirms multi-step is fundamentally harder than single-step (errors compound).",
+    },
     # === V5 NeuronSpark SNN (14 features, neuromorphic) ===
     {
         "id": "v5_neuronspark_snn",
@@ -511,6 +523,83 @@ def _v3_fixed_predict(
     }
 
 
+@lru_cache(maxsize=2)
+def _load_v4_seq2seq_predictor(checkpoint_filename: str) -> dict[str, Any]:
+    """Load V4 Seq2Seq-GRU multistep checkpoint."""
+    import sys
+    sys.path.insert(0, str(PROJECT_ROOT))
+    import torch
+    from src.models.train_delay_predictor_v4_multistep import Seq2SeqGRU
+
+    bundle = torch.load(PROJECT_ROOT / "models" / checkpoint_filename,
+                        map_location="cpu", weights_only=False)
+    model = Seq2SeqGRU(
+        input_size=bundle.get("input_size", 1),
+        hidden_size=bundle.get("hidden_size", 128),
+        num_layers=bundle.get("num_layers", 2),
+        horizon=bundle.get("horizon", 5),
+    )
+    model.load_state_dict(bundle["model_state_dict"])
+    model.eval()
+    return {
+        "model": model,
+        "horizon": int(bundle.get("horizon", 5)),
+        "seq_len": int(bundle.get("seq_len", 10)),
+    }
+
+
+def _v4_seq2seq_predict(
+    entry: dict[str, Any],
+    fallback_runtime: DelayPredictorRuntime,
+    route_id: str,
+    stop_id: str,
+    scheduled_time: str,
+    direction_id: str | None,
+    scheduled_headway: float | None,
+) -> dict[str, Any]:
+    """Predict next delay (and 4 more steps ahead) via V4 Seq2Seq-GRU.
+
+    Input is a length-10 sequence of past delays. Without per-(route, stop)
+    live history we seed the sequence with the V2 bundle's global mean delay,
+    so this is a cold-start demo. Returns the immediate next-step prediction
+    as predicted_delay_minutes for consistency with single-step models.
+    """
+    import time as _time
+    import numpy as np
+    import torch
+
+    payload = _load_v4_seq2seq_predictor(entry["checkpoint"])
+    model = payload["model"]
+    seq_len = payload["seq_len"]
+    horizon = payload["horizon"]
+
+    stats = fallback_runtime.stats
+    global_mean = float(stats.get("global_mean", 0.0))
+
+    # Cold-start sequence: past 10 delays = global mean
+    seed = np.full((1, seq_len, 1), global_mean, dtype=np.float32)
+    start = _time.perf_counter()
+    with torch.no_grad():
+        out = model(torch.from_numpy(seed)).numpy()  # shape: (1, horizon)
+    latency_ms = (_time.perf_counter() - start) * 1000.0
+
+    horizon_predictions = out.reshape(-1).tolist()
+    next_step = float(horizon_predictions[0])
+
+    return {
+        "predicted_delay_minutes": next_step,
+        "model": entry["label"],
+        "model_id": entry["id"],
+        "architecture": entry["architecture"],
+        "feature_version": entry["feature_version"],
+        "test_R2": entry["test_R2"],
+        "test_RMSE": entry["test_RMSE"],
+        "model_latency_ms": float(latency_ms),
+        "used_defaults": ["delay_history_sequence"],
+        "horizon_predictions_minutes": [round(p, 4) for p in horizon_predictions],
+    }
+
+
 @lru_cache(maxsize=4)
 def _load_v5_v6_predictor(checkpoint_filename: str) -> dict[str, Any]:
     """Load a V5 NeuronSpark or V6 Transformer quick-trained checkpoint."""
@@ -650,6 +739,17 @@ def predict_with_registry_model(
     entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
     if entry is None:
         raise ValueError(f"unknown model_id: {model_id}")
+
+    if entry["backend"] == "v4_seq2seq_adapter":
+        return _v4_seq2seq_predict(
+            entry,
+            fallback_runtime=fallback_runtime,
+            route_id=route_id,
+            stop_id=stop_id,
+            scheduled_time=scheduled_time,
+            direction_id=direction_id,
+            scheduled_headway=scheduled_headway,
+        )
 
     if entry["backend"] == "v5_v6_adapter":
         return _v5_v6_predict(

@@ -45,6 +45,10 @@ from src.models.train_delay_predictor_v5_neuronspark import (
     TransformerRegressor,
     load_and_prepare_data,
 )
+from src.models.train_delay_predictor_v4_multistep import (
+    Seq2SeqGRU,
+    load_data_sequences,
+)
 
 DEVICE = torch.device(
     "cuda" if torch.cuda.is_available()
@@ -176,6 +180,9 @@ def main():
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--skip-snn", action="store_true", help="Skip V5 NeuronSpark training")
     parser.add_argument("--skip-transformer", action="store_true", help="Skip V6 Transformer training")
+    parser.add_argument("--skip-v4", action="store_true", help="Skip V4 multistep Seq2Seq training")
+    parser.add_argument("--v4-horizon", type=int, default=5, help="V4 multi-step horizon")
+    parser.add_argument("--v4-seq-len", type=int, default=10, help="V4 input sequence length")
     args = parser.parse_args()
 
     print(f"Device: {DEVICE}")
@@ -206,6 +213,85 @@ def main():
             "note": "Quick-train demo checkpoint; full-data run reaches R^2=0.9942.",
         }
         out = MODELS_DIR / "delay_transformer_v6_quick.pt"
+        torch.save(bundle, out)
+        print(f"Saved {out}")
+
+    if not args.skip_v4:
+        print("\n" + "="*60)
+        print(f"V4 Seq2Seq-GRU multistep training (horizon={args.v4_horizon}, seq_len={args.v4_seq_len})")
+        print("="*60)
+        # V4 has its own sequence-based data loader (different shape: [B, seq_len, 1] -> [B, horizon])
+        Xs_train, ys_train, Xs_test, ys_test = load_data_sequences(
+            seq_len=args.v4_seq_len, horizon=args.v4_horizon, sample_size=args.sample_size
+        )
+        print(f"V4 Xs_train: {Xs_train.shape}  ys_train: {ys_train.shape}")
+
+        v4_model = Seq2SeqGRU(input_size=1, hidden_size=128, num_layers=2, horizon=args.v4_horizon).to(DEVICE)
+        n_params = sum(p.numel() for p in v4_model.parameters())
+        print(f"V4 Parameters: {n_params:,}")
+
+        # V4 doesn't use sklearn scalers — it operates directly on delay sequences
+        train_loader = DataLoader(
+            TensorDataset(torch.from_numpy(Xs_train.astype(np.float32)),
+                          torch.from_numpy(ys_train.astype(np.float32))),
+            batch_size=128, shuffle=True,
+        )
+        test_loader = DataLoader(
+            TensorDataset(torch.from_numpy(Xs_test.astype(np.float32)),
+                          torch.from_numpy(ys_test.astype(np.float32))),
+            batch_size=128,
+        )
+        criterion = nn.MSELoss()
+        optimizer = optim.Adam(v4_model.parameters(), lr=1e-3, weight_decay=1e-5)
+        v4_start = time.time()
+        for epoch in range(args.epochs):
+            v4_model.train()
+            losses = []
+            for X_batch, y_batch in train_loader:
+                X_batch = X_batch.to(DEVICE)
+                y_batch = y_batch.to(DEVICE)
+                optimizer.zero_grad()
+                pred = v4_model(X_batch)
+                loss = criterion(pred, y_batch)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(v4_model.parameters(), 1.0)
+                optimizer.step()
+                losses.append(loss.item())
+            if (epoch + 1) % 3 == 0 or epoch == 0:
+                print(f"  Epoch {epoch+1}: train={np.mean(losses):.4f}")
+        v4_elapsed = time.time() - v4_start
+
+        v4_model.eval()
+        all_preds, all_actuals = [], []
+        with torch.no_grad():
+            for X_batch, y_batch in test_loader:
+                p = v4_model(X_batch.to(DEVICE)).cpu().numpy()
+                all_preds.append(p)
+                all_actuals.append(y_batch.numpy())
+        preds_arr = np.concatenate(all_preds)
+        actuals_arr = np.concatenate(all_actuals)
+        rmse = float(np.sqrt(mean_squared_error(actuals_arr.ravel(), preds_arr.ravel())))
+        mae = float(mean_absolute_error(actuals_arr.ravel(), preds_arr.ravel()))
+        r2 = float(r2_score(actuals_arr.ravel(), preds_arr.ravel()))
+        print(f"V4 Results: RMSE={rmse:.4f}  MAE={mae:.4f}  R^2={r2:.4f}  ({v4_elapsed:.1f}s)")
+
+        bundle = {
+            "model_state_dict": v4_model.state_dict(),
+            "model_kind": "seq2seq_gru",
+            "feature_version": "v4",
+            "input_size": 1,
+            "hidden_size": 128,
+            "num_layers": 2,
+            "horizon": args.v4_horizon,
+            "seq_len": args.v4_seq_len,
+            "test_rmse": rmse,
+            "test_mae": mae,
+            "test_r2": r2,
+            "trained_at": datetime.now().isoformat(),
+            "trained_sample_size": args.sample_size,
+            "note": "Quick-train Seq2Seq multi-step demo. Multi-step prediction is intrinsically harder than single-step (R^2 ~0.08 in paper).",
+        }
+        out = MODELS_DIR / "delay_seq2seq_v4_quick.pt"
         torch.save(bundle, out)
         print(f"Saved {out}")
 
