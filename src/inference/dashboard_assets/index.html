@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boston Bus Equity Realtime Dashboard</title>
-    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-defenseqa5" />
+    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-livepicker6" />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   </head>
   <body>
@@ -111,12 +111,14 @@
 
       <section class="section split" id="realtime">
         <div>
-          <p class="eyebrow">Realtime inference</p>
-          <h2>Predict delay for a scheduled bus arrival</h2>
+          <p class="eyebrow">Realtime inference - Step 1</p>
+          <h2>Predict delay for a single scheduled bus arrival</h2>
           <p>
-            Choose a route and one of its valid stops. Route and stop menus are synced
-            across the page. If the chosen stop has no current MBTA predictions, the
-            dashboard auto-selects the first active route-stop with live rows.
+            Pick any of our V1 - V6 trained checkpoints, then specify a route, stop, and
+            scheduled time. The dashboard runs that single model on the chosen input and
+            returns a delay estimate plus a multi-step horizon chart. Use this to compare
+            different architectures on the same input (e.g. switch V1 baseline vs V6
+            Transformer).
           </p>
           <form class="panel form-grid" id="predict-form">
             <label class="span-2">
@@ -173,13 +175,15 @@
 
       <section class="section split" id="live">
         <div>
-          <p class="eyebrow">MBTA live comparison</p>
-          <h2>Compare MBTA official predictions with our local model</h2>
+          <p class="eyebrow">Realtime inference - Step 2</p>
+          <h2>Compare MBTA official predictions with our model on live data</h2>
           <p>
-            Pulls upcoming-trip predictions from the MBTA V3 API and runs our V2 MLP
-            (the deployed realtime model) on the same trips. The chart shows both side
-            by side as model disagreement until matched actual arrivals are available
-            for true accuracy measurement.
+            Same model picker as Step 1 above. The dashboard pulls the next several
+            upcoming-trip predictions from the MBTA V3 live API and runs the
+            <strong>currently selected model</strong> on each one. The chart shows the
+            local model's estimate alongside MBTA's own official prediction so you can
+            see where they agree and where they disagree. True accuracy still requires
+            matched actual arrivals.
           </p>
           <form class="panel form-grid compact" id="live-form">
             <label>
@@ -292,6 +296,6 @@
       </p>
     </footer>
 
-    <script src="/assets/dashboard.js?v=20260426-defenseqa5"></script>
+    <script src="/assets/dashboard.js?v=20260426-livepicker6"></script>
   </body>
 </html>

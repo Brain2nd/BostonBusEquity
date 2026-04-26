@@ -1207,6 +1207,42 @@ def data_and_model_notes() -> dict[str, Any]:
     }
 
 
+def _override_with_registry_model(
+    dataframe: "pd.DataFrame",
+    runtime: DelayPredictorRuntime,
+    model_id: str,
+) -> "pd.DataFrame":
+    """Replace V2-runtime predictions with predictions from a registry model."""
+    import pandas as pd_local
+    out = dataframe.copy()
+    if out.empty:
+        return out
+    for index, row in out.iterrows():
+        scheduled_time = row.get("scheduled_time")
+        if pd_local.isna(scheduled_time):
+            continue
+        direction = row.get("direction_id")
+        direction = None if pd_local.isna(direction) else str(direction)
+        try:
+            result = predict_with_registry_model(
+                model_id=model_id,
+                fallback_runtime=runtime,
+                route_id=str(row["route_id"]),
+                stop_id=str(row["stop_id"]),
+                scheduled_time=pd_local.Timestamp(scheduled_time).isoformat(),
+                direction_id=direction,
+                scheduled_headway=None if pd_local.isna(row.get("scheduled_headway_minutes"))
+                                  else float(row.get("scheduled_headway_minutes")),
+            )
+            out.at[index, "model_predicted_delay_minutes"] = result["predicted_delay_minutes"]
+            if not pd_local.notna(row.get("official_delay_minutes")):
+                out.at[index, "official_informed_delay_minutes"] = result["predicted_delay_minutes"]
+            out.at[index, "model_used_defaults"] = ",".join(result.get("used_defaults", []))
+        except Exception as exc:  # noqa: BLE001 - any failure -> annotate row, keep going
+            out.at[index, "model_error"] = f"{model_id}: {exc}"
+    return out
+
+
 def live_compare(
     runtime: DelayPredictorRuntime,
     route_id: str,
@@ -1214,6 +1250,7 @@ def live_compare(
     direction_id: str | int | None = None,
     prediction_limit: int = 8,
     vehicle_limit: int = 100,
+    model_id: str | None = None,
 ) -> dict[str, Any]:
     client = MBTAV3Client()
     requested_route_id = str(route_id)
@@ -1261,6 +1298,10 @@ def live_compare(
         merged = snapshots["merged"]
 
     compared = apply_runtime_predictions(merged, runtime=runtime)
+    # If the user picked a different model in the UI, override the per-row
+    # local prediction to come from that model instead of the V2 runtime.
+    if model_id and model_id != "v2_historical":
+        compared = _override_with_registry_model(compared, runtime, model_id)
     rows = []
     for row in compared.replace({np.nan: None}).to_dict("records"):
         baseline = None
@@ -1377,6 +1418,7 @@ def live_enriched_forecast(
     direction_id: str | int | None = None,
     prediction_limit: int = 10,
     vehicle_limit: int = 100,
+    model_id: str | None = None,
 ) -> dict[str, Any]:
     """Use MBTA live rows to avoid stateless synthetic-horizon flatlines.
 
@@ -1433,6 +1475,8 @@ def live_enriched_forecast(
         merged = snapshots["merged"]
 
     independent = apply_runtime_predictions(merged, runtime=runtime)
+    if model_id and model_id != "v2_historical":
+        independent = _override_with_registry_model(independent, runtime, model_id)
     live_feature_runtime = _optional_live_feature_runtime()
     live_feature = (
         apply_runtime_predictions(merged, runtime=live_feature_runtime)

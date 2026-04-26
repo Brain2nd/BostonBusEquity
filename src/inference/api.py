@@ -75,6 +75,7 @@ class LiveCompareRequest(BaseModel):
     direction_id: str | None = None
     prediction_limit: int = Field(default=8, ge=1, le=20)
     vehicle_limit: int = Field(default=100, ge=1, le=200)
+    model_id: str | None = None
 
 
 class LiveEnrichedForecastRequest(BaseModel):
@@ -83,6 +84,7 @@ class LiveEnrichedForecastRequest(BaseModel):
     direction_id: str | None = None
     prediction_limit: int = Field(default=10, ge=1, le=20)
     vehicle_limit: int = Field(default=100, ge=1, le=200)
+    model_id: str | None = None
 
 
 def create_app(bundle_path: str | Path) -> FastAPI:
@@ -257,6 +259,7 @@ def create_app(bundle_path: str | Path) -> FastAPI:
             direction_id=payload.direction_id,
             prediction_limit=payload.prediction_limit,
             vehicle_limit=payload.vehicle_limit,
+            model_id=payload.model_id or DEFAULT_MODEL_ID,
         )
 
     @app.post("/api/live-enriched-forecast")
@@ -268,6 +271,7 @@ def create_app(bundle_path: str | Path) -> FastAPI:
             direction_id=payload.direction_id,
             prediction_limit=payload.prediction_limit,
             vehicle_limit=payload.vehicle_limit,
+            model_id=payload.model_id or DEFAULT_MODEL_ID,
         )
 
     return app

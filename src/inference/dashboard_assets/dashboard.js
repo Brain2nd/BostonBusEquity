@@ -505,6 +505,8 @@ async function tryLiveEnrichedForecast(inferencePayload) {
         direction_id: inferencePayload.direction_id || null,
         prediction_limit: 12,
         vehicle_limit: 100,
+        // Use the same model the user selected for single-step prediction
+        model_id: inferencePayload.model_id || null,
       }),
     });
   } catch {
@@ -922,6 +924,15 @@ async function handleLiveCompare(event) {
   payload.direction_id = payload.direction_id || null;
   payload.prediction_limit = Number(payload.prediction_limit || 8);
   payload.vehicle_limit = 100;
+  // Mirror whichever model the user picked in the Predict form so the
+  // live-vs-MBTA chart compares against the same architecture.
+  const predictForm = document.getElementById("predict-form");
+  const pickedModel = predictForm
+    ? new FormData(predictForm).get("model_id")
+    : null;
+  if (pickedModel) {
+    payload.model_id = pickedModel;
+  }
 
   document.getElementById("live-mode").textContent = "Loading";
   document.getElementById("live-message").textContent = "Calling MBTA V3 API and local model...";
