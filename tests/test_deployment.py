@@ -493,15 +493,16 @@ def test_models_endpoint_lists_all_12_checkpoints() -> None:
         "v2_lstm_historical", "v2_gru_historical",
         "v3_gru_wavelet", "v3_lstm_wavelet",
         "v3_gru_fixed", "v3_lstm_fixed", "v3_mlp_fixed",
+        "v5_neuronspark_snn", "v6_transformer",
     }
     missing = expected_ids - ids
     assert not missing, f"registry missing models: {missing}"
 
-    # All three architectures and three feature versions present
+    # Five architectures (MLP/LSTM/GRU/SNN/Transformer) and six feature versions
     archs = {m["architecture"] for m in body["models"]}
-    assert {"MLP", "LSTM", "GRU"}.issubset(archs)
+    assert {"MLP", "LSTM", "GRU", "SNN", "Transformer"}.issubset(archs)
     versions = {m["feature_version"] for m in body["models"]}
-    assert {"v1", "v2", "v3", "v3_fixed"}.issubset(versions)
+    assert {"v1", "v2", "v3", "v3_fixed", "v5", "v6"}.issubset(versions)
 
     for entry in body["models"]:
         assert "test_R2" in entry
@@ -521,6 +522,8 @@ def test_models_endpoint_lists_all_12_checkpoints() -> None:
         ("v3_gru_fixed", "v3_fixed_adapter"),
         ("v3_lstm_fixed", "v3_fixed_adapter"),
         ("v3_mlp_fixed", "v3_fixed_adapter"),
+        ("v5_neuronspark_snn", "v5_v6_adapter"),
+        ("v6_transformer", "v5_v6_adapter"),
     ],
 )
 def test_predict_dispatches_through_each_backend(model_id: str, expected_backend: str) -> None:
