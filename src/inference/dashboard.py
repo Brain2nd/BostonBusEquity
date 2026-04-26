@@ -289,20 +289,35 @@ def _sort_id_values(values: list[str]) -> list[str]:
 
 
 def selection_options(runtime: DelayPredictorRuntime) -> dict[str, Any]:
-    """Expose safe route/stop selections from the loaded realtime bundle."""
+    """Expose safe route/stop selections from the loaded realtime bundle.
+
+    Bundles trained with the V4 LightGBM pipeline carry a ``stats.route_stop``
+    map. Bundles built from the V2 MLP pipeline (our default deployment) do
+    not. When that key is missing we fall back to pairing every route in the
+    encoder with every stop, so the dropdowns still populate correctly.
+    """
 
     route_encoder = runtime.encoders.get("route_id", {})
     stop_encoder = runtime.encoders.get("stop_id", {})
     direction_encoder = runtime.encoders.get("direction_id", {})
 
     route_stop_map: dict[str, set[str]] = {}
-    for key in runtime.stats.get("route_stop", {}):
+    for key in runtime.stats.get("route_stop", {}) or {}:
         route_key, separator, stop_key = str(key).partition("_")
         if not separator:
             continue
         route_value = _route_api_value(route_key)
         if stop_key in stop_encoder:
             route_stop_map.setdefault(route_value, set()).add(stop_key)
+
+    if not route_stop_map and route_encoder and stop_encoder:
+        # Fallback: bundle has no per-(route, stop) statistics. Allow every
+        # encoded stop to be selected for every encoded route so users can
+        # still drive the predictor; runtime input validation still rejects
+        # truly unseen IDs at predict time.
+        all_stop_keys = {str(stop_id) for stop_id in stop_encoder}
+        for raw_route in route_encoder:
+            route_stop_map[_route_api_value(raw_route)] = set(all_stop_keys)
 
     route_stop_options = {
         route: [{"value": stop, "label": stop} for stop in _sort_id_values(list(stop_ids))]
