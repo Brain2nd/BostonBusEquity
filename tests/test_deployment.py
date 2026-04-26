@@ -470,8 +470,8 @@ def test_model_metrics_uses_our_project_numbers() -> None:
     assert "lightgbm_q35" not in body_str
 
 
-def test_models_endpoint_lists_multiple_checkpoints() -> None:
-    """/api/models must enumerate at least 4 of our trained checkpoints."""
+def test_models_endpoint_lists_all_12_checkpoints() -> None:
+    """/api/models must enumerate every shipped V1/V2/V3 checkpoint."""
     httpx = pytest.importorskip("httpx")
     from src.inference.api import create_app
 
@@ -486,15 +486,72 @@ def test_models_endpoint_lists_multiple_checkpoints() -> None:
     assert "default" in body
     assert "models" in body
     ids = {m["id"] for m in body["models"]}
-    # Must surface multiple architectures across multiple feature versions
-    assert "v2_mlp_realtime" in ids
-    assert any(m["feature_version"] == "v3" for m in body["models"]), "no V3 model exposed"
-    assert len(body["models"]) >= 4, f"expected >=4 models, got {len(body['models'])}"
+
+    expected_ids = {
+        "v1_mlp_baseline", "v1_lstm_baseline", "v1_gru_baseline",
+        "v2_mlp_realtime", "v2_mlp_historical",
+        "v2_lstm_historical", "v2_gru_historical",
+        "v3_gru_wavelet", "v3_lstm_wavelet",
+        "v3_gru_fixed", "v3_lstm_fixed", "v3_mlp_fixed",
+    }
+    missing = expected_ids - ids
+    assert not missing, f"registry missing models: {missing}"
+
+    # All three architectures and three feature versions present
+    archs = {m["architecture"] for m in body["models"]}
+    assert {"MLP", "LSTM", "GRU"}.issubset(archs)
+    versions = {m["feature_version"] for m in body["models"]}
+    assert {"v1", "v2", "v3", "v3_fixed"}.issubset(versions)
 
     for entry in body["models"]:
         assert "test_R2" in entry
         assert "test_RMSE" in entry
         assert "architecture" in entry
+        assert "backend" in entry
+
+
+@pytest.mark.parametrize(
+    "model_id,expected_backend",
+    [
+        ("v1_lstm_baseline", "pr4_realtime"),
+        ("v1_gru_baseline", "pr4_realtime"),
+        ("v2_lstm_historical", "pr4_realtime"),
+        ("v2_gru_historical", "pr4_realtime"),
+        ("v3_lstm_wavelet", "pr4_realtime"),
+        ("v3_gru_fixed", "v3_fixed_adapter"),
+        ("v3_lstm_fixed", "v3_fixed_adapter"),
+        ("v3_mlp_fixed", "v3_fixed_adapter"),
+    ],
+)
+def test_predict_dispatches_through_each_backend(model_id: str, expected_backend: str) -> None:
+    """Every selectable model must produce a prediction when chosen via /api/predict."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+    from src.inference.dashboard import MODEL_REGISTRY
+
+    entry = next(m for m in MODEL_REGISTRY if m["id"] == model_id)
+    assert entry["backend"] == expected_backend
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            options = (await client.get("/api/options")).json()
+            payload = {
+                "route_id": options["defaults"]["route_id"],
+                "stop_id": options["defaults"]["stop_id"],
+                "scheduled_time": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+                "model_id": model_id,
+            }
+            response = await client.post("/api/predict", json=payload)
+            assert response.status_code == 200, response.text
+            return response.json()
+
+    body = asyncio.run(_run())
+    assert body["model_id"] == model_id
+    assert body["architecture"] == entry["architecture"]
+    assert body["feature_version"] == entry["feature_version"]
+    pred = body["predicted_delay_minutes"]
+    assert -120 < pred < 120, f"prediction wildly out of range: {pred}"
 
 
 def test_predict_via_v1_baseline_returns_metrics() -> None:

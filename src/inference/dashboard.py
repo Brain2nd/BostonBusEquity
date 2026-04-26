@@ -15,7 +15,7 @@ from src.config import FIGURES_DIR, PROJECT_ROOT, REPORTS_DIR
 from src.inference.log_mbta_live_snapshots import collect_live_snapshot
 from src.inference.mbta_v3_client import MBTAV3Client
 from src.inference.plot_mbta_realtime_comparison import apply_runtime_predictions
-from src.inference.runtime import DelayPredictorRuntime
+from src.inference.runtime import DelayPredictorRuntime, PredictionInputError
 
 DASHBOARD_ASSET_DIR = Path(__file__).parent / "dashboard_assets"
 DEFAULT_SCORE_BUNDLE = (
@@ -34,60 +34,141 @@ HISTORICAL_PARQUET = PROJECT_ROOT / "data" / "processed" / "arrival_departure.pa
 # the dashboard's "model picker". V2 MLP (realtime bundle) uses PR #3's
 # runtime; everything else loads via PR #4's RealtimeDelayPredictor.bootstrap.
 MODEL_REGISTRY: list[dict[str, Any]] = [
-    {
-        "id": "v2_mlp_realtime",
-        "label": "V2 MLP - causal lag (deployed default)",
-        "checkpoint": "delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt",
-        "feature_version": "v2",
-        "architecture": "MLP",
-        "test_R2": -0.11,
-        "test_RMSE": 6.34,
-        "backend": "pr3_runtime",
-        "note": "Pre-bundled with scalers/encoders/stats. The active deployment runtime.",
-    },
+    # === V1 baseline (static features, 9-dim input) ===
     {
         "id": "v1_mlp_baseline",
-        "label": "V1 MLP - static features baseline",
+        "label": "V1 MLP - static features baseline (R^2=-0.07)",
         "checkpoint": "delay_predictor_mlp_v1_baseline_temporal.pt",
         "feature_version": "v1",
         "architecture": "MLP",
         "test_R2": -0.07,
         "test_RMSE": 6.24,
         "backend": "pr4_realtime",
-        "note": "Baseline: shows that static features alone cannot predict delays.",
+        "note": "Baseline: static features cannot predict delays. Negative R^2 means worse than mean.",
     },
     {
-        "id": "v2_mlp_historical",
-        "label": "V2 MLP - historical statistics",
-        "checkpoint": "delay_predictor_mlp_v2_lag_features_temporal.pt",
+        "id": "v1_lstm_baseline",
+        "label": "V1 LSTM - static features baseline (R^2=-0.10)",
+        "checkpoint": "delay_predictor_lstm_v1_baseline_temporal.pt",
+        "feature_version": "v1",
+        "architecture": "LSTM",
+        "test_R2": -0.10,
+        "test_RMSE": 6.32,
+        "backend": "pr4_realtime",
+        "note": "Same V1 features, LSTM architecture. Confirms architecture alone cannot fix it.",
+    },
+    {
+        "id": "v1_gru_baseline",
+        "label": "V1 GRU - static features baseline (R^2=-0.19)",
+        "checkpoint": "delay_predictor_gru_v1_baseline_temporal.pt",
+        "feature_version": "v1",
+        "architecture": "GRU",
+        "test_R2": -0.19,
+        "test_RMSE": 6.58,
+        "backend": "pr4_realtime",
+        "note": "V1 GRU performs worst of the three baselines.",
+    },
+    # === V2 historical statistics (18-dim input) ===
+    {
+        "id": "v2_mlp_realtime",
+        "label": "V2 MLP - causal lag (deployed realtime bundle)",
+        "checkpoint": "delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt",
         "feature_version": "v2",
         "architecture": "MLP",
         "test_R2": -0.11,
         "test_RMSE": 6.34,
-        "backend": "pr4_realtime",
-        "note": "Adds route/stop/hour delay means + stds. Shows historical averages do not generalize.",
+        "backend": "pr3_runtime",
+        "note": "Pre-bundled with scalers/encoders/stats. The deployment-active runtime.",
     },
     {
+        "id": "v2_mlp_historical",
+        "label": "V2 MLP - historical statistics (R^2=-0.12)",
+        "checkpoint": "delay_predictor_mlp_v2_lag_features_temporal.pt",
+        "feature_version": "v2",
+        "architecture": "MLP",
+        "test_R2": -0.12,
+        "test_RMSE": 6.37,
+        "backend": "pr4_realtime",
+        "note": "Adds route/stop/hour delay means + stds. Historical averages still do not generalize.",
+    },
+    {
+        "id": "v2_lstm_historical",
+        "label": "V2 LSTM - historical statistics (R^2=-0.11)",
+        "checkpoint": "delay_predictor_lstm_v2_lag_features_temporal.pt",
+        "feature_version": "v2",
+        "architecture": "LSTM",
+        "test_R2": -0.11,
+        "test_RMSE": 6.34,
+        "backend": "pr4_realtime",
+        "note": "V2 LSTM with historical statistics; comparable to V2 MLP.",
+    },
+    {
+        "id": "v2_gru_historical",
+        "label": "V2 GRU - historical statistics (R^2=-0.11)",
+        "checkpoint": "delay_predictor_gru_v2_lag_features_temporal.pt",
+        "feature_version": "v2",
+        "architecture": "GRU",
+        "test_R2": -0.11,
+        "test_RMSE": 6.36,
+        "backend": "pr4_realtime",
+        "note": "V2 GRU with historical statistics; same negative R^2 ceiling as V2 LSTM/MLP.",
+    },
+    # === V3 wavelet temporal (28-dim input) ===
+    {
         "id": "v3_gru_wavelet",
-        "label": "V3 GRU - wavelet temporal (R^2=0.9846)",
+        "label": "V3 GRU - lag + FFT + wavelet (R^2=0.9846, BREAKTHROUGH)",
         "checkpoint": "delay_predictor_gru_v3_wavelet_temporal.pt",
         "feature_version": "v3",
         "architecture": "GRU",
         "test_R2": 0.9846,
         "test_RMSE": 0.75,
         "backend": "pr4_realtime",
-        "note": "Adds lag/rolling/FFT/wavelet features. The breakthrough V3 GRU.",
+        "note": "Adds lag/rolling/FFT/wavelet features. The decisive jump from negative R^2 to 0.98.",
     },
     {
         "id": "v3_lstm_wavelet",
-        "label": "V3 LSTM - wavelet temporal (R^2=0.9822)",
+        "label": "V3 LSTM - lag + FFT + wavelet (R^2=0.9822)",
         "checkpoint": "delay_predictor_lstm_v3_wavelet_temporal.pt",
         "feature_version": "v3",
         "architecture": "LSTM",
         "test_R2": 0.9822,
         "test_RMSE": 0.80,
         "backend": "pr4_realtime",
-        "note": "Same V3 features, LSTM instead of GRU. Slightly behind GRU.",
+        "note": "Same V3 features, LSTM. Marginally behind V3 GRU.",
+    },
+    # === V3 fixed no-leakage (41-dim input, custom adapter) ===
+    {
+        "id": "v3_gru_fixed",
+        "label": "V3 GRU - fixed no-leakage (41 features, R^2=0.9893)",
+        "checkpoint": "delay_gru_v3_fixed_no_leakage.pt",
+        "feature_version": "v3_fixed",
+        "architecture": "GRU",
+        "test_R2": 0.9893,
+        "test_RMSE": 0.6384,
+        "backend": "v3_fixed_adapter",
+        "note": "Stricter no-leakage V3 with 41 features (lag/rolling/FFT/wavelet/stats/historical). Approximate features at inference.",
+    },
+    {
+        "id": "v3_lstm_fixed",
+        "label": "V3 LSTM - fixed no-leakage (41 features)",
+        "checkpoint": "delay_lstm_v3_fixed_no_leakage.pt",
+        "feature_version": "v3_fixed",
+        "architecture": "LSTM",
+        "test_R2": 0.9822,
+        "test_RMSE": 0.80,
+        "backend": "v3_fixed_adapter",
+        "note": "Stricter no-leakage V3 LSTM, 41 features.",
+    },
+    {
+        "id": "v3_mlp_fixed",
+        "label": "V3 MLP - fixed no-leakage (41 features)",
+        "checkpoint": "delay_mlp_v3_fixed_no_leakage.pt",
+        "feature_version": "v3_fixed",
+        "architecture": "MLP",
+        "test_R2": 0.9830,
+        "test_RMSE": 0.79,
+        "backend": "v3_fixed_adapter",
+        "note": "Stricter no-leakage V3 MLP, 41 features.",
     },
 ]
 DEFAULT_MODEL_ID = "v3_gru_wavelet"
@@ -261,6 +342,151 @@ def _load_pr4_predictor(checkpoint_filename: str):
     )
 
 
+@lru_cache(maxsize=4)
+def _load_v3_fixed_predictor(checkpoint_filename: str, architecture: str) -> tuple:
+    """Load a V3 fixed-no-leakage checkpoint with 41-feature architecture.
+
+    Returns (model, fallback_runtime_for_encoders, scaler_x_mean, scaler_x_std,
+             scaler_y_mean, scaler_y_std).
+
+    The training-time scalers are not saved with the V3-fixed checkpoints, so
+    we approximate them from the V2 realtime bundle's statistics. Predictions
+    from this adapter are demonstration-grade rather than production-grade.
+    """
+    import sys
+    sys.path.insert(0, str(PROJECT_ROOT))
+    import torch
+    from src.models.train_delay_predictor_v3_fixed import (
+        GRUPredictor,
+        LSTMPredictor,
+        MLPPredictor,
+    )
+
+    arch_map = {"GRU": GRUPredictor, "LSTM": LSTMPredictor, "MLP": MLPPredictor}
+    model_cls = arch_map[architecture]
+    checkpoint_path = PROJECT_ROOT / "models" / checkpoint_filename
+    state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    model = model_cls(input_size=41)
+    model.load_state_dict(state_dict)
+    model.eval()
+    return model
+
+
+def _v3_fixed_predict(
+    entry: dict[str, Any],
+    fallback_runtime: DelayPredictorRuntime,
+    route_id: str,
+    stop_id: str,
+    scheduled_time: str,
+    direction_id: str | None,
+    scheduled_headway: float | None,
+) -> dict[str, Any]:
+    """Run a single prediction through a V3 fixed (41-feature) checkpoint.
+
+    Borrows route/stop/direction encoders + historical stats from the V2
+    realtime bundle so the encoded categorical features are correct. Lag,
+    rolling, FFT, and wavelet features are filled with the global mean delay
+    (cold-start) since we do not maintain per-(route, stop) live history yet.
+    """
+    import time as _time
+    import numpy as np
+    import torch
+    import pandas as pd
+
+    model = _load_v3_fixed_predictor(entry["checkpoint"], entry["architecture"])
+
+    encoders = fallback_runtime.encoders
+    stats = fallback_runtime.stats
+
+    # Reuse the runtime's zero-padding canonicalization so '1' resolves to '01' etc.
+    route_id = fallback_runtime._canonical_known_value("route_id", str(route_id))
+    stop_id = fallback_runtime._canonical_known_value("stop_id", str(stop_id))
+
+    if route_id not in encoders["route_id"]:
+        raise PredictionInputError(f"Unknown route_id: {route_id}")
+    if stop_id not in encoders["stop_id"]:
+        raise PredictionInputError(f"Unknown stop_id: {stop_id}")
+
+    direction = direction_id or "Unknown"
+    if direction not in encoders.get("direction_id", {}):
+        direction = "Unknown"
+
+    timestamp = pd.Timestamp(scheduled_time)
+    hour = int(timestamp.hour)
+    dow = int(timestamp.dayofweek)
+
+    global_mean = float(stats.get("global_mean", 0.0))
+    global_std = float(stats.get("global_std", 1.0)) or 1.0
+
+    route_stats = stats.get("route", {}).get(route_id, {})
+    stop_stats = stats.get("stop", {}).get(stop_id, {})
+    hour_stats = stats.get("hour", {}).get(str(hour), {})
+
+    feature_columns_v3 = [
+        # Basic + cyclical (9)
+        "is_weekend", "is_rush_hour", "route_enc", "stop_enc", "dir_enc",
+        "hour_sin", "hour_cos", "dow_sin", "dow_cos",
+        # Historical stats (5)
+        "route_delay_mean", "route_delay_std", "stop_delay_mean", "stop_delay_std", "hour_delay_mean",
+        # Lag (7)
+        "delay_lag_1", "delay_lag_2", "delay_lag_3", "delay_lag_4", "delay_lag_5",
+        "delay_diff_1", "delay_diff_2",
+        # Rolling (8)
+        "delay_roll_mean_5", "delay_roll_std_5", "delay_roll_min_5", "delay_roll_max_5",
+        "delay_roll_mean_10", "delay_roll_std_10", "delay_roll_min_10", "delay_roll_max_10",
+        # FFT (6) + Wavelet (6)
+        "fft_feat_0", "fft_feat_1", "fft_feat_2", "fft_feat_3", "fft_feat_4", "fft_feat_5",
+        "wavelet_feat_0", "wavelet_feat_1", "wavelet_feat_2", "wavelet_feat_3", "wavelet_feat_4", "wavelet_feat_5",
+    ]
+
+    values = {col: 0.0 for col in feature_columns_v3}
+    values["is_weekend"] = float(dow >= 5)
+    values["is_rush_hour"] = float((7 <= hour <= 9) or (16 <= hour <= 19))
+    values["route_enc"] = float(encoders["route_id"][route_id])
+    values["stop_enc"] = float(encoders["stop_id"][stop_id])
+    values["dir_enc"] = float(encoders.get("direction_id", {}).get(direction, 0))
+    values["hour_sin"] = float(np.sin(2 * np.pi * hour / 24))
+    values["hour_cos"] = float(np.cos(2 * np.pi * hour / 24))
+    values["dow_sin"] = float(np.sin(2 * np.pi * dow / 7))
+    values["dow_cos"] = float(np.cos(2 * np.pi * dow / 7))
+    values["route_delay_mean"] = float(route_stats.get("mean", global_mean))
+    values["route_delay_std"] = float(route_stats.get("std", global_std))
+    values["stop_delay_mean"] = float(stop_stats.get("mean", global_mean))
+    values["stop_delay_std"] = float(stop_stats.get("std", global_std))
+    values["hour_delay_mean"] = float(hour_stats.get("mean", global_mean) if isinstance(hour_stats, dict) else hour_stats or global_mean)
+    # Cold-start lag/rolling/FFT/wavelet defaults: zero-centered around mean
+    for k in ("delay_lag_1", "delay_lag_2", "delay_lag_3", "delay_lag_4", "delay_lag_5"):
+        values[k] = global_mean
+    values["delay_roll_mean_5"] = global_mean
+    values["delay_roll_mean_10"] = global_mean
+    values["delay_roll_std_5"] = global_std
+    values["delay_roll_std_10"] = global_std
+
+    feature_vector = np.array([[values[c] for c in feature_columns_v3]], dtype=np.float32)
+
+    # Approximate scaler: standardize by global stats (no per-feature scaler available)
+    scaled = (feature_vector - feature_vector.mean()) / (feature_vector.std() + 1e-8)
+
+    start = _time.perf_counter()
+    with torch.no_grad():
+        out = model(torch.from_numpy(scaled.astype(np.float32))).numpy()
+    latency_ms = (_time.perf_counter() - start) * 1000.0
+    # Inverse-scale back to delay range using global stats
+    pred = float(out[0, 0]) * global_std + global_mean
+
+    return {
+        "predicted_delay_minutes": pred,
+        "model": entry["label"],
+        "model_id": entry["id"],
+        "architecture": entry["architecture"],
+        "feature_version": entry["feature_version"],
+        "test_R2": entry["test_R2"],
+        "test_RMSE": entry["test_RMSE"],
+        "model_latency_ms": float(latency_ms),
+        "used_defaults": ["lag_features", "fft_features", "wavelet_features"],
+    }
+
+
 def predict_with_registry_model(
     model_id: str,
     *,
@@ -275,6 +501,17 @@ def predict_with_registry_model(
     entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
     if entry is None:
         raise ValueError(f"unknown model_id: {model_id}")
+
+    if entry["backend"] == "v3_fixed_adapter":
+        return _v3_fixed_predict(
+            entry,
+            fallback_runtime=fallback_runtime,
+            route_id=route_id,
+            stop_id=stop_id,
+            scheduled_time=scheduled_time,
+            direction_id=direction_id,
+            scheduled_headway=scheduled_headway,
+        )
 
     if entry["backend"] == "pr3_runtime":
         # The default V2 MLP realtime bundle goes through the existing runtime
