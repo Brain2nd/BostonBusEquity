@@ -66,6 +66,18 @@ PROJECT_KPIS = [
         "detail": "Livable Streets target routes show higher delays than other routes.",
         "source": "Final report Q5",
     },
+    {
+        "label": "Best model R²",
+        "value": "0.9942",
+        "detail": "V6 Transformer (~1.6M params) on full dataset, RMSE=0.46 min.",
+        "source": "Q8 delay prediction",
+    },
+    {
+        "label": "NeuronSpark SNN R²",
+        "value": "0.9897",
+        "detail": "V5 Spiking Neural Network (~1.4M params), outperforms GRU baseline.",
+        "source": "Q8 extended research",
+    },
 ]
 
 VISUALIZATION_CATALOG = [
@@ -109,10 +121,45 @@ VISUALIZATION_CATALOG = [
         "claim": "Static online-safe features help only modestly; large gains require live trip-history or V5 residual labels.",
         "caption": "This is the main speaking figure for explaining why official predictions can outperform a stateless local model.",
     },
+    {
+        "id": "ablation_study_comparison",
+        "title": "V3 Feature-Extraction Ablation",
+        "filename": "ablation_study_comparison.png",
+        "category": "Modeling",
+        "claim": "Combined lag + rolling + FFT + wavelet features achieve the best RMSE (0.9056). Rolling statistics contribute the most among individual methods.",
+        "caption": "Ablation isolates each signal-processing method using the same GRU model. All methods achieve R² > 0.975.",
+    },
+    {
+        "id": "delay_prediction_neuronspark_comparison",
+        "title": "V5 NeuronSpark SNN vs GRU",
+        "filename": "delay_prediction_neuronspark_comparison.png",
+        "category": "Modeling",
+        "claim": "NeuronSpark SNN (R²=0.9897) outperforms GRU baseline on the full 3.76M-sample dataset.",
+        "caption": "Spiking Neural Network with dynamic membrane parameters and K-bit binary spike encoding.",
+    },
+    {
+        "id": "delay_prediction_training_curves_v3_wavelet_temporal",
+        "title": "V3 Time-Series Training Curves",
+        "filename": "delay_prediction_training_curves_v3_wavelet_temporal.png",
+        "category": "Modeling",
+        "claim": "Adding lag + signal-processing features lifts R² from -0.07 (V1 baseline) to 0.9846 (V3 GRU).",
+        "caption": "Training and validation loss converge smoothly with no overfitting, confirming feature engineering quality.",
+    },
+    {
+        "id": "delay_prediction_multistep_comparison",
+        "title": "V4 Multi-Step Prediction",
+        "filename": "delay_prediction_multistep_comparison.png",
+        "category": "Modeling",
+        "claim": "Multi-step Seq2Seq prediction is fundamentally harder (R²~0.08) than single-step (R²=0.98) due to error accumulation.",
+        "caption": "Confirms that long-horizon delay forecasting requires external context (weather, traffic) beyond historical delays.",
+    },
 ]
 
 
 def choose_default_bundle() -> Path:
+    """Prefer our team's V2 MLP bundle; fall back to V4 LightGBM if V2 missing."""
+    if DEFAULT_V2_BUNDLE.exists():
+        return DEFAULT_V2_BUNDLE
     if DEFAULT_SCORE_BUNDLE.exists():
         return DEFAULT_SCORE_BUNDLE
     if DEFAULT_V4_BUNDLE.exists():
