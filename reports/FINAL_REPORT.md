@@ -3,11 +3,10 @@
 
 **Course:** CS506 - Data Science Tools and Applications
 **Client:** City of Boston Analytics Team / Spark!
-**Date:** February 2025
 
 ### Authors
 
-- zztangbu@bu.edu (First Author)
+- zztangbu@bu.edu
 - lzj2729@bu.edu
 - ljf628@bu.edu
 - yaobc@bu.edu
@@ -367,7 +366,3 @@ Boston University CS506 - Spring 2025
 - City of Boston Analytics Team
 - Spark! at Boston University
 - Livable Streets Alliance (for target routes identification)
-
----
-
-*Report generated: February 2025*
