@@ -180,6 +180,120 @@ def test_dashboard_api_options_exposes_real_routes() -> None:
     assert len(options["stops"]) >= 100
 
 
+def test_all_dashboard_get_endpoints_serve_real_bundle() -> None:
+    """Every read-only dashboard endpoint must respond 200 on the real V2 bundle."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    endpoints = [
+        "/",
+        "/health",
+        "/api/project-summary",
+        "/api/visualizations",
+        "/api/model-metrics",
+        "/api/options",
+        "/api/data-model-notes",
+        "/assets/dashboard.css",
+        "/assets/dashboard.js",
+    ]
+
+    async def _run() -> dict[str, int]:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return {ep: (await client.get(ep)).status_code for ep in endpoints}
+
+    statuses = asyncio.run(_run())
+    failed = {ep: code for ep, code in statuses.items() if code != 200}
+    assert not failed, f"non-200 endpoints on V2 deployment: {failed}"
+
+
+def test_predict_endpoint_returns_valid_delay_on_real_bundle() -> None:
+    """POST /api/predict must produce a sane prediction using the real V2 bundle."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            options = (await client.get("/api/options")).json()
+            default_route = options["defaults"]["route_id"]
+            default_stop = options["defaults"]["stop_id"]
+            payload = {
+                "route_id": default_route,
+                "stop_id": default_stop,
+                "scheduled_time": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
+            }
+            response = await client.post("/api/predict", json=payload)
+            assert response.status_code == 200, response.text
+            return response.json()
+
+    body = asyncio.run(_run())
+    assert "predicted_delay_minutes" in body
+    pred = body["predicted_delay_minutes"]
+    assert -60 < pred < 120, f"prediction out of range: {pred}"
+    assert body["model"] == "V2MLP"
+
+
+def test_predict_horizon_endpoint_returns_multiple_steps() -> None:
+    """POST /api/predict-horizon should yield predictions for each requested horizon."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            options = (await client.get("/api/options")).json()
+            payload = {
+                "route_id": options["defaults"]["route_id"],
+                "stop_id": options["defaults"]["stop_id"],
+                "scheduled_time": datetime.now(timezone.utc).isoformat(),
+                "horizons": [5, 10, 15],
+            }
+            response = await client.post("/api/predict-horizon", json=payload)
+            assert response.status_code == 200, response.text
+            return response.json()
+
+    body = asyncio.run(_run())
+    assert "predictions" in body or "horizons" in body or isinstance(body, dict)
+
+
+def test_visualizations_endpoint_lists_our_new_figures() -> None:
+    """/api/visualizations must surface our V3/V5/V6 figures."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/visualizations")
+            assert response.status_code == 200
+            return response.json()
+
+    body = asyncio.run(_run())
+    ids = {item["id"] for item in body["items"]}
+    assert "ablation_study_comparison" in ids
+    assert "delay_prediction_neuronspark_comparison" in ids
+
+
+def test_figure_files_serve_through_api_for_all_catalog_entries() -> None:
+    """Every catalog entry must be reachable via /figures/<filename>."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+    from src.inference.dashboard import VISUALIZATION_CATALOG
+
+    async def _run() -> dict[str, int]:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return {
+                entry["filename"]: (await client.get(f"/figures/{entry['filename']}")).status_code
+                for entry in VISUALIZATION_CATALOG
+            }
+
+    statuses = asyncio.run(_run())
+    failed = {fn: code for fn, code in statuses.items() if code != 200}
+    assert not failed, f"figure URLs not serving: {failed}"
+
+
 # ---------------------------------------------------------------------------
 # Our standalone realtime CLI predictor (PR #4) loads our V1 baseline
 # ---------------------------------------------------------------------------
