@@ -28,6 +28,69 @@ DEFAULT_V2_BUNDLE = (
     / "delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt"
 )
 LIVE_FEATURE_BUNDLE = PROJECT_ROOT / "models" / "delay_predictor_v4_tree_realtime_bundle.joblib"
+HISTORICAL_PARQUET = PROJECT_ROOT / "data" / "processed" / "arrival_departure.parquet"
+
+# Multi-model registry: every entry exposes one of our trained checkpoints in
+# the dashboard's "model picker". V2 MLP (realtime bundle) uses PR #3's
+# runtime; everything else loads via PR #4's RealtimeDelayPredictor.bootstrap.
+MODEL_REGISTRY: list[dict[str, Any]] = [
+    {
+        "id": "v2_mlp_realtime",
+        "label": "V2 MLP - causal lag (deployed default)",
+        "checkpoint": "delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt",
+        "feature_version": "v2",
+        "architecture": "MLP",
+        "test_R2": -0.11,
+        "test_RMSE": 6.34,
+        "backend": "pr3_runtime",
+        "note": "Pre-bundled with scalers/encoders/stats. The active deployment runtime.",
+    },
+    {
+        "id": "v1_mlp_baseline",
+        "label": "V1 MLP - static features baseline",
+        "checkpoint": "delay_predictor_mlp_v1_baseline_temporal.pt",
+        "feature_version": "v1",
+        "architecture": "MLP",
+        "test_R2": -0.07,
+        "test_RMSE": 6.24,
+        "backend": "pr4_realtime",
+        "note": "Baseline: shows that static features alone cannot predict delays.",
+    },
+    {
+        "id": "v2_mlp_historical",
+        "label": "V2 MLP - historical statistics",
+        "checkpoint": "delay_predictor_mlp_v2_lag_features_temporal.pt",
+        "feature_version": "v2",
+        "architecture": "MLP",
+        "test_R2": -0.11,
+        "test_RMSE": 6.34,
+        "backend": "pr4_realtime",
+        "note": "Adds route/stop/hour delay means + stds. Shows historical averages do not generalize.",
+    },
+    {
+        "id": "v3_gru_wavelet",
+        "label": "V3 GRU - wavelet temporal (R^2=0.9846)",
+        "checkpoint": "delay_predictor_gru_v3_wavelet_temporal.pt",
+        "feature_version": "v3",
+        "architecture": "GRU",
+        "test_R2": 0.9846,
+        "test_RMSE": 0.75,
+        "backend": "pr4_realtime",
+        "note": "Adds lag/rolling/FFT/wavelet features. The breakthrough V3 GRU.",
+    },
+    {
+        "id": "v3_lstm_wavelet",
+        "label": "V3 LSTM - wavelet temporal (R^2=0.9822)",
+        "checkpoint": "delay_predictor_lstm_v3_wavelet_temporal.pt",
+        "feature_version": "v3",
+        "architecture": "LSTM",
+        "test_R2": 0.9822,
+        "test_RMSE": 0.80,
+        "backend": "pr4_realtime",
+        "note": "Same V3 features, LSTM instead of GRU. Slightly behind GRU.",
+    },
+]
+DEFAULT_MODEL_ID = "v3_gru_wavelet"
 LIVE_ROUTE_STOP_PRIORITIES = [
     ("1", "110"),
     ("1", "75"),
@@ -141,6 +204,119 @@ def choose_default_bundle() -> Path:
     if DEFAULT_V4_BUNDLE.exists():
         return DEFAULT_V4_BUNDLE
     return DEFAULT_V2_BUNDLE
+
+
+def list_available_models() -> list[dict[str, Any]]:
+    """Return MODEL_REGISTRY entries whose checkpoint exists on disk."""
+    available = []
+    for entry in MODEL_REGISTRY:
+        path = PROJECT_ROOT / "models" / entry["checkpoint"]
+        if path.exists():
+            available.append({**entry, "available": True})
+    return available
+
+
+def _load_historical_sample(max_rows: int = 30000) -> Any:
+    """Read a small slice of the historical parquet (first row group) for fast bootstrap.
+
+    The full parquet is ~18 GB; reading it on every cold-start would freeze the
+    dashboard for minutes. Loading a single row group keeps bootstrap under a
+    couple of seconds at the cost of slightly less representative artifacts.
+    """
+    if not HISTORICAL_PARQUET.exists():
+        from src.models.realtime_inference import build_demo_historical_frame
+        return build_demo_historical_frame(num_rows=512)
+
+    try:
+        import pyarrow.parquet as pq
+
+        pf = pq.ParquetFile(HISTORICAL_PARQUET)
+        if pf.num_row_groups == 0:
+            raise RuntimeError("empty parquet file")
+        # First row group is usually a few hundred MB; cap rows to keep it fast
+        table = pf.read_row_group(0)
+        df = table.to_pandas()
+        if len(df) > max_rows:
+            df = df.sample(n=max_rows, random_state=42)
+        return df
+    except Exception:
+        from src.models.realtime_inference import build_demo_historical_frame
+        return build_demo_historical_frame(num_rows=512)
+
+
+@lru_cache(maxsize=8)
+def _load_pr4_predictor(checkpoint_filename: str):
+    """Bootstrap a PR #4 RealtimeDelayPredictor for the given checkpoint, with caching."""
+    from src.models.realtime_inference import RealtimeDelayPredictor
+
+    checkpoint_path = PROJECT_ROOT / "models" / checkpoint_filename
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"checkpoint not found: {checkpoint_path}")
+
+    return RealtimeDelayPredictor.bootstrap(
+        checkpoint_path=checkpoint_path,
+        historical_data=_load_historical_sample(),
+        sample_size=10000,
+        device="cpu",
+    )
+
+
+def predict_with_registry_model(
+    model_id: str,
+    *,
+    fallback_runtime: DelayPredictorRuntime,
+    route_id: str,
+    stop_id: str,
+    scheduled_time: str,
+    direction_id: str | None = None,
+    scheduled_headway: float | None = None,
+) -> dict[str, Any]:
+    """Dispatch a prediction to the right backend based on model_id."""
+    entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
+    if entry is None:
+        raise ValueError(f"unknown model_id: {model_id}")
+
+    if entry["backend"] == "pr3_runtime":
+        # The default V2 MLP realtime bundle goes through the existing runtime
+        result = fallback_runtime.predict(
+            route_id=route_id,
+            stop_id=stop_id,
+            scheduled_time=scheduled_time,
+            scheduled_headway=scheduled_headway,
+            direction_id=direction_id,
+        )
+        return {
+            "predicted_delay_minutes": result["predicted_delay_minutes"],
+            "model": entry["label"],
+            "model_id": entry["id"],
+            "architecture": entry["architecture"],
+            "feature_version": entry["feature_version"],
+            "test_R2": entry["test_R2"],
+            "test_RMSE": entry["test_RMSE"],
+            "used_defaults": result.get("used_defaults", []),
+        }
+
+    # PR #4 backend
+    predictor = _load_pr4_predictor(entry["checkpoint"])
+    record = {
+        "route_id": route_id,
+        "stop_id": stop_id,
+        "scheduled": scheduled_time,
+        "direction_id": direction_id or "Unknown",
+        "scheduled_headway": scheduled_headway,
+    }
+    result = predictor.predict_one(record)
+    return {
+        "predicted_delay_minutes": float(result.predicted_delay_minutes),
+        "model": entry["label"],
+        "model_id": entry["id"],
+        "architecture": entry["architecture"],
+        "feature_version": entry["feature_version"],
+        "test_R2": entry["test_R2"],
+        "test_RMSE": entry["test_RMSE"],
+        "model_latency_ms": float(result.model_latency_ms),
+        "used_history": result.used_history,
+    }
 
 
 @lru_cache(maxsize=1)

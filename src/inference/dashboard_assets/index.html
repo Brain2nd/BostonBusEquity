@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boston Bus Equity Realtime Dashboard</title>
-    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-projectreal3" />
+    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-multimodel4" />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   </head>
   <body>
@@ -63,6 +63,10 @@
             dashboard auto-selects the first active route-stop with live rows.
           </p>
           <form class="panel form-grid" id="predict-form">
+            <label class="span-2">
+              Model (V1 -> V3 trained checkpoints)
+              <select name="model_id" id="model-select" required></select>
+            </label>
             <label>
               Route ID
               <select name="route_id" data-route-select required></select>
@@ -95,10 +99,10 @@
               Forecast step (min)
               <input name="interval_minutes" type="number" min="5" max="120" step="5" value="15" />
             </label>
-            <p class="form-hint">
-              Vehicle telemetry (speed, current stop sequence) is auto-filled from
-              MBTA live data when relevant. The active V2 MLP model does not use
-              those fields; they are ignored at prediction time.
+            <p class="form-hint" id="model-info-hint">
+              Pick any of our trained checkpoints. V1/V2 served from baseline + historical-stats experiments;
+              V3 is the breakthrough lag/wavelet model (R^2 = 0.9846). The forecast horizon chart always uses
+              the deployed V2 realtime bundle for stable multi-step extrapolation.
             </p>
             <button class="button primary" type="submit">Predict delay</button>
           </form>
@@ -218,6 +222,6 @@
       </p>
     </footer>
 
-    <script src="/assets/dashboard.js?v=20260426-projectreal3"></script>
+    <script src="/assets/dashboard.js?v=20260426-multimodel4"></script>
   </body>
 </html>

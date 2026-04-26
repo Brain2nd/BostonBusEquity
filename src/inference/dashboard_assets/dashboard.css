@@ -265,6 +265,10 @@ dt {
   margin-top: 8px;
 }
 
+.form-grid > .span-2 {
+  grid-column: 1 / -1;
+}
+
 .form-hint {
   grid-column: 1 / -1;
   margin: 4px 0 0;

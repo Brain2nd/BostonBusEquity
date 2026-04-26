@@ -16,12 +16,15 @@ except ImportError as exc:  # pragma: no cover - exercised only when dependency 
     ) from exc
 
 from .dashboard import (
+    DEFAULT_MODEL_ID,
     allowed_figure_path,
     asset_path,
     data_and_model_notes,
+    list_available_models,
     live_compare,
     live_enriched_forecast,
     model_metrics,
+    predict_with_registry_model,
     project_summary,
     selection_options,
     visualizations,
@@ -35,6 +38,7 @@ class PredictRequest(BaseModel):
     scheduled_time: datetime
     scheduled_headway: float | None = None
     direction_id: str | None = None
+    model_id: str | None = None
     trip_id: str | None = None
     vehicle_id: str | None = None
     current_stop_sequence: float | None = None
@@ -47,8 +51,16 @@ class PredictRequest(BaseModel):
 class PredictResponse(BaseModel):
     predicted_delay_minutes: float
     model: str
-    experiment: str
+    experiment: str | None = None
     used_defaults: list[str] = Field(default_factory=list)
+    # Multi-model registry fields (populated when model_id != default)
+    model_id: str | None = None
+    architecture: str | None = None
+    feature_version: str | None = None
+    test_R2: float | None = None
+    test_RMSE: float | None = None
+    model_latency_ms: float | None = None
+    used_history: int | None = None
 
 
 class PredictHorizonRequest(PredictRequest):
@@ -103,6 +115,7 @@ def create_app(bundle_path: str | Path) -> FastAPI:
 
     @app.post("/predict", response_model=PredictResponse)
     def predict(payload: PredictRequest) -> PredictResponse:
+        # Default V2 runtime path (preserves the original POST /predict shape)
         try:
             prediction = runtime.predict(
                 route_id=payload.route_id,
@@ -143,8 +156,33 @@ def create_app(bundle_path: str | Path) -> FastAPI:
     def dashboard_data_model_notes() -> dict:
         return data_and_model_notes()
 
+    @app.get("/api/models")
+    def dashboard_models() -> dict:
+        return {
+            "default": DEFAULT_MODEL_ID,
+            "models": list_available_models(),
+        }
+
     @app.post("/api/predict", response_model=PredictResponse)
     def dashboard_predict(payload: PredictRequest) -> PredictResponse:
+        # If a specific model was requested, dispatch through the registry
+        if payload.model_id and payload.model_id != "v2_mlp_realtime":
+            try:
+                result = predict_with_registry_model(
+                    model_id=payload.model_id,
+                    fallback_runtime=runtime,
+                    route_id=payload.route_id,
+                    stop_id=payload.stop_id,
+                    scheduled_time=payload.scheduled_time.isoformat(),
+                    direction_id=payload.direction_id,
+                    scheduled_headway=payload.scheduled_headway,
+                )
+            except FileNotFoundError as exc:
+                raise HTTPException(status_code=404, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return PredictResponse(**result)
+        # Default path: V2 MLP realtime bundle through PR #3's runtime
         return predict(payload)
 
     @app.post("/api/predict-horizon")

@@ -320,8 +320,16 @@ async function handlePredict(event) {
     });
     const minutes = result.predicted_delay_minutes;
     value.textContent = `${minutes.toFixed(2)} min`;
-    detail.textContent =
-      `Model: ${result.model}. Defaults used: ${result.used_defaults.length ? result.used_defaults.join(", ") : "none"}.`;
+    const r2Part =
+      typeof result.test_R2 === "number" ? ` test R^2 = ${result.test_R2.toFixed(4)}.` : "";
+    const latencyPart =
+      typeof result.model_latency_ms === "number"
+        ? ` Inference: ${result.model_latency_ms.toFixed(1)} ms.`
+        : "";
+    const defaultsPart = result.used_defaults?.length
+      ? ` Defaults: ${result.used_defaults.join(", ")}.`
+      : "";
+    detail.textContent = `Model: ${result.model}.${r2Part}${latencyPart}${defaultsPart}`;
 
     const horizon = await fetchJson("/api/predict-horizon", {
       method: "POST",
@@ -510,6 +518,10 @@ function buildPredictionPayload(form) {
     payload[key] = payload[key] === "" ? null : Number(payload[key]);
   });
   payload.direction_id = payload.direction_id || null;
+  // Pass the user's selected model_id straight through. The backend dispatches
+  // to PR #4's RealtimeDelayPredictor for V1/V3 checkpoints and PR #3's runtime
+  // for the V2 MLP realtime bundle.
+  payload.model_id = payload.model_id || null;
   // Vehicle telemetry fields (current_stop_sequence, vehicle_speed) are not
   // collected from the user — they auto-populate via the live-enriched
   // forecast endpoint when MBTA real-time data is available.
@@ -1050,22 +1062,54 @@ function readableError(error) {
   }
 }
 
+function renderModelPicker(payload) {
+  const select = document.getElementById("model-select");
+  if (!select) return;
+  const defaultId = payload.default || "";
+  const models = payload.models || [];
+  state.modelRegistry = models;
+  select.innerHTML = models
+    .map((m) => {
+      const r2 = typeof m.test_R2 === "number" ? ` (R^2 = ${m.test_R2.toFixed(4)})` : "";
+      return `<option value="${m.id}"${m.id === defaultId ? " selected" : ""}>${m.label}${r2}</option>`;
+    })
+    .join("");
+
+  const hint = document.getElementById("model-info-hint");
+  function updateHint() {
+    const picked = models.find((m) => m.id === select.value);
+    if (!picked) return;
+    const r2 = typeof picked.test_R2 === "number" ? picked.test_R2.toFixed(4) : "?";
+    const rmse = typeof picked.test_RMSE === "number" ? picked.test_RMSE.toFixed(2) : "?";
+    hint.innerHTML =
+      `<strong>${picked.label}</strong>` +
+      ` &mdash; ${picked.architecture}, feature version ${picked.feature_version}.` +
+      ` Reported test R^2 = ${r2}, RMSE = ${rmse} min.<br>` +
+      `<span style="opacity:0.8">${picked.note || ""}</span>`;
+  }
+  select.addEventListener("change", updateHint);
+  updateHint();
+}
+
 async function init() {
   setDefaultTime();
   document.getElementById("predict-form").addEventListener("submit", handlePredict);
   document.getElementById("live-form").addEventListener("submit", handleLiveCompare);
-  const [summary, visualPayload, metricsPayload, notesPayload, optionsPayload] = await Promise.all([
-    fetchJson("/api/project-summary"),
-    fetchJson("/api/visualizations"),
-    fetchJson("/api/model-metrics"),
-    fetchJson("/api/data-model-notes"),
-    fetchJson("/api/options"),
-  ]);
+  const [summary, visualPayload, metricsPayload, notesPayload, optionsPayload, modelsPayload] =
+    await Promise.all([
+      fetchJson("/api/project-summary"),
+      fetchJson("/api/visualizations"),
+      fetchJson("/api/model-metrics"),
+      fetchJson("/api/data-model-notes"),
+      fetchJson("/api/options"),
+      fetchJson("/api/models"),
+    ]);
   renderSummary(summary);
   renderVisualizations(visualPayload);
   renderModelMetrics(metricsPayload);
   renderNotes(notesPayload);
   renderSelectionOptions(optionsPayload);
+  renderModelPicker(modelsPayload);
   refreshStaticFigures();
   renderPredictionHorizon({ rows: [] });
   renderLiveChart([]);
