@@ -68,11 +68,10 @@ class RealtimeInferenceTests(unittest.TestCase):
         self.assertEqual(records[0]["stop_id"], "70091")
         self.assertEqual(records[0]["vehicle_id"], "vehicle-1")
 
-    def test_gitignore_blocks_codex_workspace(self):
+    def test_gitignore_blocks_local_agent_workspace(self):
         gitignore_text = (PROJECT_ROOT / ".gitignore").read_text(encoding="utf-8")
-        self.assertIn(".codex/", gitignore_text)
         self.assertIn(".agents/", gitignore_text)
-        self.assertIn("codex/", gitignore_text)
+        self.assertIn("models/delay_predictor_mlp_v2_realtime_bundle_stage2.pt", gitignore_text)
 
 
 if __name__ == "__main__":

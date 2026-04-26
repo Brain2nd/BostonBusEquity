@@ -2,16 +2,6 @@
 
 Target repository: `https://github.com/Brain2nd/BostonBusEquity`
 
-## Important Git Safety Note
-
-On this machine, running `git rev-parse --show-toplevel` from the project folder resolves to:
-
-```text
-C:/Users/yaobc
-```
-
-That means the current project folder is inside a parent Git repository rooted at the Windows user directory. Do **not** run `git add .` from `C:\Users\yaobc` or from this project until the project has its own `.git` folder or is copied into a clean clone of the target GitHub repository.
-
 ## Recommended Files To Submit
 
 Core project files:
@@ -20,12 +10,13 @@ Core project files:
 .gitignore
 README.md
 requirements.txt
+docs/
 src/
 tests/
-docs/
+tools/
 ```
 
-Model/dashboard artifacts needed for the current demo:
+Model and dashboard artifacts needed for the current demo:
 
 ```text
 models/delay_predictor_v4_score_best_online_safe_bundle.joblib
@@ -57,7 +48,7 @@ reports/figures/mbta_realtime_model_gap_story.png
 reports/figures/mbta_realtime_official_vs_model.png
 ```
 
-Optional small metric CSV files, if the graders want raw metric tables:
+Optional small metric CSV files:
 
 ```text
 reports/delay_prediction_v4_model_scores.csv
@@ -84,6 +75,7 @@ reports/v4_history_upper_bound_test_predictions.csv
 reports/tmp_*
 reports/figures/tmp_*
 models/tmp_*
+models/delay_predictor_mlp_v2_realtime_bundle_stage2.pt
 ```
 
 ## Safe Submission Workflow
@@ -91,16 +83,15 @@ models/tmp_*
 Use a clean clone of the GitHub repository:
 
 ```powershell
-cd C:\Users\yaobc\Downloads\hw542
 git clone https://github.com/Brain2nd/BostonBusEquity.git BostonBusEquity-submit
+cd BostonBusEquity-submit
 ```
 
-Copy the project files from `BostonBusEquity-main` into `BostonBusEquity-submit`, excluding the folders listed above. Then from inside the clean clone:
+Copy the project files into the clean clone, excluding the folders listed above. Then from inside the clean clone:
 
 ```powershell
-cd C:\Users\yaobc\Downloads\hw542\BostonBusEquity-submit
 git status --short
-git add .gitignore README.md requirements.txt docs src tests `
+git add .gitignore README.md requirements.txt docs src tests tools `
   reports/DELAY_PREDICTION_V4_OPTIMIZATION_REPORT.md `
   reports/MBTA_REALTIME_OFFICIAL_VS_MODEL.md `
   reports/MODEL_SCORING_GUIDE.md `
@@ -124,7 +115,7 @@ git add .gitignore README.md requirements.txt docs src tests `
   models/delay_predictor_v4_best_online_safe_bundle.joblib `
   models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt
 git status --short
-git commit -m "Add April check-in dashboard and V4 realtime model documentation"
+git commit -m "Add April check-in dashboard and V4 documentation updates"
 git push origin main
 ```
 
@@ -139,10 +130,7 @@ git branch --show-current
 Start the dashboard:
 
 ```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve `
-  --bundle models\delay_predictor_v4_score_best_online_safe_bundle.joblib `
-  --host 0.0.0.0 `
-  --port 8000
+.\tools\start_dashboard.ps1
 ```
 
 Open:
@@ -151,14 +139,8 @@ Open:
 http://127.0.0.1:8000/
 ```
 
-For another device on the same Wi-Fi:
-
-```text
-http://192.168.1.179:8000/
-```
-
 Run quick validation:
 
 ```powershell
-C:\Users\yaobc\anaconda3\python.exe -m pytest tests\test_realtime_inference.py tests\test_v4_delay_predictor.py -q --basetemp .pytest_tmp\submission -o cache_dir=.pytest_tmp\cache
+.\tools\run_april_checkin_validation.ps1
 ```

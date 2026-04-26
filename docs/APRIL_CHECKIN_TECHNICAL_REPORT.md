@@ -189,10 +189,7 @@ This is not the same as accuracy. It measures disagreement between MBTA official
 The project now includes a user-facing FastAPI dashboard:
 
 ```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve `
-  --bundle models\delay_predictor_v4_score_best_online_safe_bundle.joblib `
-  --host 0.0.0.0 `
-  --port 8000
+.\tools\start_dashboard.ps1
 ```
 
 Open locally:
