@@ -470,8 +470,8 @@ def test_model_metrics_uses_our_project_numbers() -> None:
     assert "lightgbm_q35" not in body_str
 
 
-def test_models_endpoint_lists_all_12_checkpoints() -> None:
-    """/api/models must enumerate every shipped V1/V2/V3 checkpoint."""
+def test_models_endpoint_matches_v1_to_v6_report_progression() -> None:
+    """/api/models must mirror the V1 -> V6 rows in the project report (6 entries)."""
     httpx = pytest.importorskip("httpx")
     from src.inference.api import create_app
 
@@ -485,25 +485,27 @@ def test_models_endpoint_lists_all_12_checkpoints() -> None:
     body = asyncio.run(_run())
     assert "default" in body
     assert "models" in body
-    ids = {m["id"] for m in body["models"]}
+    ids = [m["id"] for m in body["models"]]
 
-    expected_ids = {
-        "v1_mlp_baseline", "v1_lstm_baseline", "v1_gru_baseline",
-        "v2_mlp_realtime", "v2_mlp_historical",
-        "v2_lstm_historical", "v2_gru_historical",
-        "v3_gru_wavelet", "v3_lstm_wavelet",
-        "v3_gru_fixed", "v3_lstm_fixed", "v3_mlp_fixed",
-        "v4_seq2seq_multistep",
-        "v5_neuronspark_snn", "v6_transformer",
-    }
-    missing = expected_ids - ids
-    assert not missing, f"registry missing models: {missing}"
+    # One entry per project version, in V1 -> V6 order
+    expected_ids = [
+        "v1_baseline",
+        "v2_historical",
+        "v3_time_series",
+        "v4_multistep",
+        "v5_neuronspark",
+        "v6_transformer",
+    ]
+    assert ids == expected_ids, f"registry must list V1->V6 in order, got {ids}"
 
-    # Six architectures (MLP/LSTM/GRU/Seq2Seq-GRU/SNN/Transformer) and seven feature versions
-    archs = {m["architecture"] for m in body["models"]}
-    assert {"MLP", "LSTM", "GRU", "Seq2Seq-GRU", "SNN", "Transformer"}.issubset(archs)
+    # Default is the project's headline best model
+    assert body["default"] == "v6_transformer"
+
+    # Six unique feature versions and six unique architectures
     versions = {m["feature_version"] for m in body["models"]}
-    assert {"v1", "v2", "v3", "v3_fixed", "v4", "v5", "v6"}.issubset(versions)
+    assert versions == {"v1", "v2", "v3", "v4", "v5", "v6"}
+    archs = {m["architecture"] for m in body["models"]}
+    assert archs == {"MLP", "LSTM", "GRU", "Seq2Seq-GRU", "SNN", "Transformer"}
 
     for entry in body["models"]:
         assert "test_R2" in entry
@@ -515,16 +517,11 @@ def test_models_endpoint_lists_all_12_checkpoints() -> None:
 @pytest.mark.parametrize(
     "model_id,expected_backend",
     [
-        ("v1_lstm_baseline", "pr4_realtime"),
-        ("v1_gru_baseline", "pr4_realtime"),
-        ("v2_lstm_historical", "pr4_realtime"),
-        ("v2_gru_historical", "pr4_realtime"),
-        ("v3_lstm_wavelet", "pr4_realtime"),
-        ("v3_gru_fixed", "v3_fixed_adapter"),
-        ("v3_lstm_fixed", "v3_fixed_adapter"),
-        ("v3_mlp_fixed", "v3_fixed_adapter"),
-        ("v4_seq2seq_multistep", "v4_seq2seq_adapter"),
-        ("v5_neuronspark_snn", "v5_v6_adapter"),
+        ("v1_baseline", "pr4_realtime"),
+        ("v2_historical", "pr4_realtime"),
+        ("v3_time_series", "pr4_realtime"),
+        ("v4_multistep", "v4_seq2seq_adapter"),
+        ("v5_neuronspark", "v5_v6_adapter"),
         ("v6_transformer", "v5_v6_adapter"),
     ],
 )
@@ -572,14 +569,14 @@ def test_predict_via_v1_baseline_returns_metrics() -> None:
                 "route_id": options["defaults"]["route_id"],
                 "stop_id": options["defaults"]["stop_id"],
                 "scheduled_time": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
-                "model_id": "v1_mlp_baseline",
+                "model_id": "v1_baseline",
             }
             response = await client.post("/api/predict", json=payload)
             assert response.status_code == 200, response.text
             return response.json()
 
     body = asyncio.run(_run())
-    assert body["model_id"] == "v1_mlp_baseline"
+    assert body["model_id"] == "v1_baseline"
     assert body["architecture"] == "MLP"
     assert body["feature_version"] == "v1"
     assert body["test_R2"] == -0.07
@@ -599,14 +596,14 @@ def test_predict_via_v3_gru_returns_high_r2() -> None:
                 "route_id": options["defaults"]["route_id"],
                 "stop_id": options["defaults"]["stop_id"],
                 "scheduled_time": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
-                "model_id": "v3_gru_wavelet",
+                "model_id": "v3_time_series",
             }
             response = await client.post("/api/predict", json=payload)
             assert response.status_code == 200, response.text
             return response.json()
 
     body = asyncio.run(_run())
-    assert body["model_id"] == "v3_gru_wavelet"
+    assert body["model_id"] == "v3_time_series"
     assert body["architecture"] == "GRU"
     assert body["feature_version"] == "v3"
     assert body["test_R2"] == 0.9846
