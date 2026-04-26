@@ -476,8 +476,15 @@ def _v4_seq2seq_predict(
     stats = fallback_runtime.stats
     global_mean = float(stats.get("global_mean", 0.0))
 
-    # Cold-start sequence: past 10 delays = global mean
-    seed = np.full((1, seq_len, 1), global_mean, dtype=np.float32)
+    # Real recent-delay sequence for this route-stop pair if we have it
+    cache = _per_route_stop_recent_delays()
+    history = cache.get((str(route_id), str(stop_id))) or cache.get(("0" + str(route_id), str(stop_id))) or []
+    if len(history) >= seq_len:
+        seq = history[-seq_len:]
+    else:
+        # Pad missing slots at the start with global mean
+        seq = [global_mean] * (seq_len - len(history)) + list(history)
+    seed = np.array(seq, dtype=np.float32).reshape(1, seq_len, 1)
     start = _time.perf_counter()
     with torch.no_grad():
         out = model(torch.from_numpy(seed)).numpy()  # shape: (1, horizon)
@@ -498,6 +505,100 @@ def _v4_seq2seq_predict(
         "used_defaults": ["delay_history_sequence"],
         "horizon_predictions_minutes": [round(p, 4) for p in horizon_predictions],
     }
+
+
+@lru_cache(maxsize=1)
+def _per_route_stop_recent_delays(top_n: int = 600, history: int = 12) -> dict[tuple[str, str], list[float]]:
+    """Pre-compute the last `history` delays for each of the busiest (route, stop) pairs.
+
+    The V4/V5/V6 models all consume lag/rolling features. Without this cache the
+    inference adapter has to fall back to global-mean fill, producing flat
+    predictions that look unconvincing in the live demo. We pay this cost once
+    at first request and reuse it for every subsequent call.
+
+    Caps at top_n route-stop pairs by frequency to keep memory/CPU bounded.
+    """
+    import numpy as np
+    import pandas as pd
+
+    if not HISTORICAL_PARQUET.exists():
+        return {}
+
+    try:
+        import pyarrow.parquet as pq
+        pf = pq.ParquetFile(HISTORICAL_PARQUET)
+        if pf.num_row_groups == 0:
+            return {}
+        # Read one row group; that's already millions of rows
+        table = pf.read_row_group(0, columns=["route_id", "stop_id", "scheduled", "actual"])
+        df = table.to_pandas()
+    except Exception:
+        return {}
+
+    # Compute delay
+    df["scheduled"] = pd.to_datetime(df["scheduled"], format="mixed", errors="coerce", utc=True)
+    df["actual"] = pd.to_datetime(df["actual"], format="mixed", errors="coerce", utc=True)
+    df["delay"] = (df["actual"] - df["scheduled"]).dt.total_seconds() / 60.0
+    df = df.dropna(subset=["delay", "scheduled"])
+    df = df[(df["delay"] >= -30) & (df["delay"] <= 60)]
+
+    # Pick the top_n busiest route-stop pairs
+    counts = df.groupby(["route_id", "stop_id"]).size().sort_values(ascending=False).head(top_n)
+    pairs = set(counts.index.tolist())
+    df = df[df.set_index(["route_id", "stop_id"]).index.isin(pairs)]
+
+    # For each pair, take the last `history` delays sorted by scheduled
+    df = df.sort_values(["route_id", "stop_id", "scheduled"])
+    cache: dict[tuple[str, str], list[float]] = {}
+    for (route, stop), group in df.groupby(["route_id", "stop_id"]):
+        recent = group["delay"].tail(history).tolist()
+        cache[(str(route), str(stop))] = [float(x) for x in recent]
+    return cache
+
+
+def _lag_features_for(route_id: str, stop_id: str, global_mean: float) -> list[float]:
+    """Return the last 5 delays + first difference for a route-stop pair.
+
+    Falls back to [global_mean]*5 + [0] if the pair has no history in cache.
+    """
+    cache = _per_route_stop_recent_delays()
+    history = cache.get((str(route_id), str(stop_id)))
+    if not history or len(history) < 6:
+        # Try canonicalized id (e.g. "1" vs "01")
+        for prefix in ("0", "00"):
+            history = cache.get((prefix + str(route_id), str(stop_id)))
+            if history and len(history) >= 6:
+                break
+
+    if not history:
+        return [global_mean] * 5 + [0.0]
+
+    # Get last 5 delays in REVERSE order (most recent first)
+    last_5 = list(reversed(history[-5:]))
+    # Pad if too short
+    while len(last_5) < 5:
+        last_5.append(global_mean)
+    # diff_1 = most_recent - second_most_recent
+    diff_1 = (history[-1] - history[-2]) if len(history) >= 2 else 0.0
+    return last_5 + [diff_1]
+
+
+def _rolling_stats_for(route_id: str, stop_id: str, global_mean: float, global_std: float) -> tuple[float, float, float, float]:
+    """Return (roll_mean_5, roll_std_5, roll_mean_10, roll_std_10) for a pair."""
+    import numpy as np
+    cache = _per_route_stop_recent_delays()
+    history = cache.get((str(route_id), str(stop_id))) or cache.get(("0" + str(route_id), str(stop_id)))
+    if not history:
+        return (global_mean, global_std, global_mean, global_std)
+    arr = np.array(history, dtype=np.float32)
+    last5 = arr[-5:] if len(arr) >= 5 else arr
+    last10 = arr[-10:] if len(arr) >= 10 else arr
+    return (
+        float(np.mean(last5)) if len(last5) else global_mean,
+        float(np.std(last5)) if len(last5) > 1 else global_std,
+        float(np.mean(last10)) if len(last10) else global_mean,
+        float(np.std(last10)) if len(last10) > 1 else global_std,
+    )
 
 
 @lru_cache(maxsize=4)
@@ -580,14 +681,13 @@ def _v5_v6_predict(
     hour_sin = float(np.sin(2 * np.pi * hour / 24))
     hour_cos = float(np.cos(2 * np.pi * hour / 24))
 
-    # 5 lags + 1 diff + 4 rolling stats — cold-start with global mean / std
+    # Real per-(route, stop) recent-delay history from the historical parquet.
+    # Falls back to global mean only when this pair has no recent history.
+    lag_block = _lag_features_for(route_id, stop_id, global_mean)  # len 6: 5 lags + diff_1
+    roll_block = _rolling_stats_for(route_id, stop_id, global_mean, global_std)  # 4 stats
+
     feature_vector = np.array(
-        [
-            is_weekend, is_rush, hour_sin, hour_cos,
-            global_mean, global_mean, global_mean, global_mean, global_mean,  # 5 lags
-            0.0,  # diff_1
-            global_mean, global_std, global_mean, global_std,  # roll_mean_5, roll_std_5, roll_mean_10, roll_std_10
-        ],
+        [is_weekend, is_rush, hour_sin, hour_cos] + lag_block + list(roll_block),
         dtype=np.float32,
     ).reshape(1, -1)
 
