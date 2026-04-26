@@ -92,8 +92,9 @@ def test_dashboard_html_and_json_endpoints(dashboard_bundle_path: Path) -> None:
             assert metrics.status_code == 200
             metrics_json = metrics.json()
             assert "summary" in metrics_json
-            assert "scoring" in metrics_json
-            assert "score_rows" in metrics_json
+            # Our V1 -> V6 progression is the new canonical shape
+            assert "experiments" in metrics_json
+            assert len(metrics_json["experiments"]) >= 6
 
             notes = await client.get("/api/data-model-notes")
             assert notes.status_code == 200

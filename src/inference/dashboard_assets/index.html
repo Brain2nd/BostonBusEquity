@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boston Bus Equity Realtime Dashboard</title>
-    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-form2" />
+    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-projectreal3" />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   </head>
   <body>
@@ -18,12 +18,13 @@
       </nav>
       <section class="hero-grid">
         <div>
-          <p class="eyebrow">CS506 Spring 2025 | MBTA Bus Performance</p>
-          <h1>Equity-focused bus reliability analysis with local realtime delay prediction.</h1>
+          <p class="eyebrow">CS506 Spring 2026 | Boston Bus Equity</p>
+          <h1>MBTA bus equity analysis + V1-V6 delay prediction experiments.</h1>
           <p class="hero-copy">
-            This dashboard combines the project's base equity analysis with an online-safe
-            delay model. Predictions estimate true delay, defined as actual arrival time
-            minus scheduled arrival time.
+            Base analysis (Q1-Q7) quantifies ridership decline, citywide delays, and
+            equity disparities across Boston neighborhoods. Extended research (Q8) builds
+            six iterations of delay prediction models, lifting R^2 from -0.07 (V1 static
+            features) to 0.9942 (V6 Transformer) on a 161M-record temporal split.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#realtime">Try a prediction</a>
@@ -113,11 +114,12 @@
       <section class="section split" id="live">
         <div>
           <p class="eyebrow">MBTA live comparison</p>
-          <h2>Compare official, baseline, and latest local realtime forecast</h2>
+          <h2>Compare MBTA official predictions with our local model</h2>
           <p>
-            The main local line is the latest realtime forecast: MBTA live delay plus
-            the local V4 residual from historical baseline. It is presentation-ready,
-            while true model quality still requires matched actual arrivals.
+            Pulls upcoming-trip predictions from the MBTA V3 API and runs our V2 MLP
+            (the deployed realtime model) on the same trips. The chart shows both side
+            by side as model disagreement until matched actual arrivals are available
+            for true accuracy measurement.
           </p>
           <form class="panel form-grid compact" id="live-form">
             <label>
@@ -152,27 +154,24 @@
           <div id="live-chart"></div>
           <figure class="report-figure">
             <figcaption>
-              Latest presentation figure: bars compare MBTA official predictions,
-              our latest V4 LightGBM-q35 estimate, and a historical baseline by
-              scheduled trip. The lower panel shows model disagreement, not true error.
+              The chart above compares MBTA official live predictions and our local V2
+              MLP predictions for each upcoming trip. The same scheduled time is fed to
+              both. Differences are model disagreement; true accuracy can only be
+              evaluated once each trip's actual arrival time is recorded.
             </figcaption>
-            <img
-              id="latest-live-story"
-              src="/figures/mbta_realtime_model_gap_story.png"
-              alt="Realtime delay estimates comparing MBTA official, latest V4 local model, and historical baseline"
-            />
           </figure>
         </div>
       </section>
 
       <section class="section" id="visuals">
         <div class="section-heading">
-          <p class="eyebrow">Latest visual evidence</p>
-          <h2>Only the current V4 realtime figures are shown here</h2>
+          <p class="eyebrow">Visual evidence</p>
+          <h2>V1 -> V6 model progression and feature ablation</h2>
           <p>
-            This catalog intentionally keeps only the current realtime and model-selection
-            figures. Every card below is tied to the latest V4 LightGBM-q35 dashboard
-            or the latest model sweep.
+            Six figures from our delay prediction experiments: training curves showing
+            why V1/V2 fail (negative R^2), the V3 ablation comparing FFT/wavelet/rolling
+            stats, V4 multi-step forecasting limits, and V5 NeuronSpark SNN against the
+            GRU baseline.
           </p>
         </div>
         <div class="visual-filter" id="visual-filter"></div>
@@ -181,17 +180,19 @@
 
       <section class="section split" id="modeling">
         <div>
-          <p class="eyebrow">Model optimization</p>
-          <h2>Strong boosting baselines with honest labels</h2>
+          <p class="eyebrow">Model progression V1 -> V6</p>
+          <h2>From R^2 = -0.07 to 0.9942 across six experiments</h2>
           <p>
-            V4 compares multiple tabular model families after installing LightGBM,
-            CatBoost, and XGBoost. The target is true delay, not the MBTA official
-            prediction.
+            Six iterations on a strict temporal split (train less than 2025, test 2025+).
+            V1 and V2 fail with negative R^2, demonstrating that delay prediction is a
+            short-term dynamics problem. V3 lag/FFT/wavelet features lift R^2 by +1.05
+            in a single step. V5 NeuronSpark SNN and V6 Transformer push the ceiling
+            further at ~1.5M parameters.
           </p>
           <div class="panel" id="model-summary"></div>
         </div>
         <div class="panel">
-          <h3>Top model candidates</h3>
+          <h3>V1 -> V6 RMSE on test set</h3>
           <div id="model-chart"></div>
         </div>
       </section>
@@ -217,6 +218,6 @@
       </p>
     </footer>
 
-    <script src="/assets/dashboard.js?v=20260426-form2"></script>
+    <script src="/assets/dashboard.js?v=20260426-projectreal3"></script>
   </body>
 </html>

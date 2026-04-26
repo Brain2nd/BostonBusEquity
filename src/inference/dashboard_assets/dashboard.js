@@ -146,43 +146,65 @@ function renderVisualizationCards(category) {
 function renderModelMetrics(payload) {
   state.modelMetrics = payload;
   const summary = payload.summary || {};
+  const experiments = payload.experiments || [];
+  const active = payload.active_deployment_model || {};
+
+  const summaryRows = experiments
+    .map(
+      (exp) => `
+        <tr>
+          <td><strong>${exp.version}</strong></td>
+          <td>${exp.name}</td>
+          <td>${exp.best_model}</td>
+          <td>${Number(exp.RMSE).toFixed(2)}</td>
+          <td>${Number(exp.R2).toFixed(4)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+
   document.getElementById("model-summary").innerHTML = `
-    <h3>${summary.best_model || "Best model pending"}</h3>
-    <p><strong>Feature profile:</strong> ${summary.best_feature_profile || "n/a"}</p>
-    <p><strong>Best final MAE:</strong> ${formatMinutes(summary.best_final_mae)}</p>
-    <p><strong>Comparable prior baseline MAE:</strong> ${formatMinutes(summary.v2_sample_mae)}</p>
-    <p><strong>Scoring rubric:</strong> ${payload.scoring?.available ? "Composite deployability score available." : "MAE-only ranking available."}</p>
-    <p class="muted">Measured against true delay labels. MBTA official predictions are used only for live comparison and later V5 residual correction.</p>
+    <h3>${summary.best_model || "V6 Transformer"}</h3>
+    <p><strong>Best test R^2:</strong> ${Number(summary.best_test_R2 ?? 0).toFixed(4)}</p>
+    <p><strong>Best test RMSE:</strong> ${Number(summary.best_test_RMSE ?? 0).toFixed(2)} min</p>
+    <p><strong>RMSE reduction vs V1 baseline:</strong> ${summary.improvement_from_baseline_RMSE_reduction_pct || 0}%</p>
+    <p><strong>Active deployment:</strong> ${active.name || "V2 MLP (causal lag features)"}</p>
+    <table class="experiment-table">
+      <thead>
+        <tr><th>Ver</th><th>Experiment</th><th>Best model</th><th>RMSE</th><th>R^2</th></tr>
+      </thead>
+      <tbody>${summaryRows}</tbody>
+    </table>
   `;
 
-  const scoreRows = payload.score_rows || [];
-  const rows = (scoreRows.length ? scoreRows : payload.sweep_rows || []).slice(0, 12).reverse();
-  const labels = rows.map((row) => `${pretty(row.model_kind || row.model_kind_requested)}<br>${row.feature_profile}`);
-  const values = scoreRows.length
-    ? rows.map((row) => row.composite_score ?? null)
-    : rows.map((row) => row.final_2024_2025_to_2026_MAE ?? row.test_MAE ?? null);
-  const hover = scoreRows.length
-    ? rows.map((row) => `Score ${Number(row.composite_score).toFixed(1)}<br>MAE ${Number(row.primary_mae).toFixed(2)} min`)
-    : rows.map((row) => `MAE ${Number(row.final_2024_2025_to_2026_MAE ?? row.test_MAE).toFixed(2)} min`);
+  const labels = experiments.map((exp) => `${exp.version}<br>${exp.best_model}`);
+  const values = experiments.map((exp) => Number(exp.RMSE));
+  const hover = experiments.map(
+    (exp) => `${exp.name}<br>RMSE ${Number(exp.RMSE).toFixed(2)} min<br>R^2 ${Number(exp.R2).toFixed(4)}`,
+  );
+  const colors = experiments.map((exp) => {
+    if (exp.version === "V6") return palette.green;
+    if (exp.version === "V5" || exp.version === "V3") return palette.teal;
+    return palette.blue;
+  });
+
   Plotly.newPlot(
     "model-chart",
     [
       {
         type: "bar",
-        orientation: "h",
-        y: labels,
-        x: values,
-        marker: { color: values.map((_, index) => (index === values.length - 1 ? palette.green : palette.blue)) },
+        orientation: "v",
+        x: labels,
+        y: values,
+        marker: { color: colors },
         text: hover,
-        hovertemplate: "%{y}<br>%{text}<extra></extra>",
+        hovertemplate: "%{text}<extra></extra>",
       },
     ],
     chartLayout(
-      scoreRows.length
-        ? "Composite model deployability score, higher is better"
-        : "2026 true-label MAE, lower is better",
-      scoreRows.length ? "Score" : "MAE (minutes)",
-      { horizontal: true },
+      "V1 -> V6 test RMSE (lower is better)",
+      "RMSE (minutes)",
+      {},
     ),
     { responsive: true, displayModeBar: false },
   );
@@ -192,7 +214,8 @@ function renderNotes(payload) {
   const grid = document.getElementById("notes-grid");
   const cards = [
     ["Data processing", payload.data_processing],
-    ["Modeling", payload.modeling],
+    ["Modeling V1 -> V6", payload.modeling],
+    ["Leakage prevention", payload.leakage_prevention || []],
     ["Interpretation", payload.interpretation],
   ];
   grid.innerHTML = cards

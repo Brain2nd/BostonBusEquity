@@ -82,44 +82,12 @@ PROJECT_KPIS = [
 
 VISUALIZATION_CATALOG = [
     {
-        "id": "mbta_realtime_model_gap_story",
-        "title": "Latest Realtime Delay Estimates",
-        "filename": "mbta_realtime_model_gap_story.png",
-        "category": "Realtime",
-        "claim": "The current dashboard compares MBTA official live predictions, the latest V4 local estimate, and a historical baseline for each upcoming trip.",
-        "caption": "The top panel compares delay estimates by scheduled time; the lower panel shows Local V4 minus MBTA official disagreement. This is not ground-truth error until actual arrivals are matched.",
-    },
-    {
-        "id": "mbta_realtime_official_vs_model",
-        "title": "Latest Official vs Local Poll",
-        "filename": "mbta_realtime_official_vs_model.png",
-        "category": "Realtime",
-        "claim": "A fresh MBTA V3 poll confirms the page is using the latest V4 LightGBM-q35 bundle.",
-        "caption": "This figure is regenerated from the current MBTA live API snapshot and should be read as model disagreement rather than measured accuracy.",
-    },
-    {
-        "id": "v4_model_sweep",
-        "title": "Latest V4 Model-Family Sweep",
-        "filename": "v4_model_sweep.png",
+        "id": "delay_prediction_training_curves_v3_wavelet_temporal",
+        "title": "V3 Time-Series Training Curves",
+        "filename": "delay_prediction_training_curves_v3_wavelet_temporal.png",
         "category": "Modeling",
-        "claim": "The latest sweep compares LightGBM, CatBoost, XGBoost, sklearn boosting, historical baselines, and dummy baselines on true-delay labels.",
-        "caption": "The model is evaluated against true delay labels, not against MBTA official predictions.",
-    },
-    {
-        "id": "v4_model_deployability_scores",
-        "title": "Latest Deployability Score",
-        "filename": "v4_model_deployability_scores.png",
-        "category": "Modeling",
-        "claim": "The best deployable model is selected by accuracy, stability, online readiness, early-delay behavior, and cost, not MAE alone.",
-        "caption": "This gives each candidate a defensible one-number score while keeping the component metrics visible.",
-    },
-    {
-        "id": "v4_optimization_story",
-        "title": "Latest Optimization Decision",
-        "filename": "v4_optimization_story.png",
-        "category": "Modeling",
-        "claim": "Static online-safe features help only modestly; large gains require live trip-history or V5 residual labels.",
-        "caption": "This is the main speaking figure for explaining why official predictions can outperform a stateless local model.",
+        "claim": "Adding lag + signal-processing features lifts R^2 from -0.07 (V1 baseline) to 0.9846 (V3 GRU).",
+        "caption": "Training and validation loss converge smoothly with no overfitting, confirming feature engineering quality.",
     },
     {
         "id": "ablation_study_comparison",
@@ -127,31 +95,39 @@ VISUALIZATION_CATALOG = [
         "filename": "ablation_study_comparison.png",
         "category": "Modeling",
         "claim": "Combined lag + rolling + FFT + wavelet features achieve the best RMSE (0.9056). Rolling statistics contribute the most among individual methods.",
-        "caption": "Ablation isolates each signal-processing method using the same GRU model. All methods achieve R² > 0.975.",
-    },
-    {
-        "id": "delay_prediction_neuronspark_comparison",
-        "title": "V5 NeuronSpark SNN vs GRU",
-        "filename": "delay_prediction_neuronspark_comparison.png",
-        "category": "Modeling",
-        "claim": "NeuronSpark SNN (R²=0.9897) outperforms GRU baseline on the full 3.76M-sample dataset.",
-        "caption": "Spiking Neural Network with dynamic membrane parameters and K-bit binary spike encoding.",
-    },
-    {
-        "id": "delay_prediction_training_curves_v3_wavelet_temporal",
-        "title": "V3 Time-Series Training Curves",
-        "filename": "delay_prediction_training_curves_v3_wavelet_temporal.png",
-        "category": "Modeling",
-        "claim": "Adding lag + signal-processing features lifts R² from -0.07 (V1 baseline) to 0.9846 (V3 GRU).",
-        "caption": "Training and validation loss converge smoothly with no overfitting, confirming feature engineering quality.",
+        "caption": "Ablation isolates each signal-processing method using the same GRU model. All methods achieve R^2 > 0.975.",
     },
     {
         "id": "delay_prediction_multistep_comparison",
         "title": "V4 Multi-Step Prediction",
         "filename": "delay_prediction_multistep_comparison.png",
         "category": "Modeling",
-        "claim": "Multi-step Seq2Seq prediction is fundamentally harder (R²~0.08) than single-step (R²=0.98) due to error accumulation.",
+        "claim": "Multi-step Seq2Seq prediction is fundamentally harder (R^2 ~ 0.08) than single-step (R^2 = 0.98) due to error accumulation.",
         "caption": "Confirms that long-horizon delay forecasting requires external context (weather, traffic) beyond historical delays.",
+    },
+    {
+        "id": "delay_prediction_neuronspark_comparison",
+        "title": "V5 NeuronSpark SNN vs GRU",
+        "filename": "delay_prediction_neuronspark_comparison.png",
+        "category": "Modeling",
+        "claim": "NeuronSpark SNN (R^2 = 0.9897) outperforms GRU baseline on the full 3.76M-sample dataset.",
+        "caption": "Spiking Neural Network with dynamic membrane parameters (beta, alpha, V_th) and K-bit binary spike encoding.",
+    },
+    {
+        "id": "delay_prediction_training_curves_v1_baseline_temporal",
+        "title": "V1 Baseline Training Curves",
+        "filename": "delay_prediction_training_curves_v1_baseline_temporal.png",
+        "category": "Modeling",
+        "claim": "V1 with only static features fails to converge meaningfully (R^2 = -0.07), motivating temporal feature engineering.",
+        "caption": "Validation loss plateaus high; the model cannot beat the sample mean.",
+    },
+    {
+        "id": "delay_prediction_training_curves_v2_lag_features_temporal",
+        "title": "V2 Historical Statistics Training Curves",
+        "filename": "delay_prediction_training_curves_v2_lag_features_temporal.png",
+        "category": "Modeling",
+        "claim": "V2 adds historical route/stop averages but R^2 remains negative (-0.11). Static historical baselines do not capture today's conditions.",
+        "caption": "Confirms that delay prediction is a short-term dynamics problem, not a static classification.",
     },
 ]
 
@@ -441,24 +417,93 @@ def visualizations() -> dict[str, Any]:
 
 
 def model_metrics() -> dict[str, Any]:
+    """Our V1 -> V6 experiment progression on the MBTA delay prediction task.
+
+    Numbers come from the project's own training runs documented in
+    reports/DELAY_PREDICTION_COMPARISON_REPORT.md and reports/FINAL_REPORT.md.
+    """
     return {
-        "summary": _read_sweep_summary(),
-        "sweep_rows": _read_top_sweep_rows(limit=16),
-        "score_rows": _read_top_score_rows(limit=16),
-        "scoring": {
-            "available": MODEL_SCORE_PATH.exists(),
-            "csv": str(MODEL_SCORE_PATH),
-            "weights": {
-                "accuracy": 0.45,
-                "stability": 0.20,
-                "online_readiness": 0.15,
-                "early_delay_behavior": 0.10,
-                "cost": 0.10,
-            },
+        "summary": {
+            "best_model": "Transformer (V6)",
+            "best_test_R2": 0.9942,
+            "best_test_RMSE": 0.4599,
+            "best_test_MAE": 0.0595,
+            "improvement_from_baseline_RMSE_reduction_pct": 93,
+            "training_protocol": "Strict temporal split: train < 2025, test >= 2025",
+            "evaluation_set": "2025-2026 MBTA arrival/departure data",
+            "feature_protocol": "Past-only lag/rolling/FFT/wavelet features (no leakage)",
         },
-        "v5": {
-            "status": "collecting_labels" if V5_REPORT_PATH.exists() else "not_started",
-            "note": "V5 will correct MBTA official predictions after enough live predictions are matched to later actual arrivals.",
+        "experiments": [
+            {
+                "version": "V1",
+                "name": "Baseline (static features only)",
+                "best_model": "MLP",
+                "RMSE": 6.24,
+                "MAE": 4.38,
+                "R2": -0.07,
+                "key_insight": "Static features alone cannot predict delays. Negative R^2 means worse than mean prediction.",
+            },
+            {
+                "version": "V2",
+                "name": "Historical statistics",
+                "best_model": "LSTM",
+                "RMSE": 6.34,
+                "MAE": 4.37,
+                "R2": -0.11,
+                "key_insight": "Route/stop historical averages do not help. Delays are non-stationary.",
+            },
+            {
+                "version": "V3",
+                "name": "Time series features (lag + FFT + wavelet)",
+                "best_model": "GRU",
+                "RMSE": 0.75,
+                "MAE": 0.18,
+                "R2": 0.9846,
+                "key_insight": "Breakthrough: recent delay history (lag features) lifts R^2 by +1.05.",
+            },
+            {
+                "version": "V4",
+                "name": "Multi-step Seq2Seq forecasting",
+                "best_model": "Seq2Seq-GRU",
+                "RMSE": 5.72,
+                "MAE": 3.90,
+                "R2": 0.085,
+                "key_insight": "Multi-step prediction is fundamentally harder; errors compound autoregressively.",
+            },
+            {
+                "version": "V5",
+                "name": "NeuronSpark Spiking Neural Network",
+                "best_model": "SNN (D=128, K=8, 1.4M params)",
+                "RMSE": 0.6098,
+                "MAE": 0.3311,
+                "R2": 0.9897,
+                "key_insight": "Neuromorphic SNN with dynamic membrane parameters beats GRU on full data.",
+            },
+            {
+                "version": "V6",
+                "name": "Transformer attention (best)",
+                "best_model": "Transformer (6L, d=128, 1.6M params)",
+                "RMSE": 0.4599,
+                "MAE": 0.0595,
+                "R2": 0.9942,
+                "key_insight": "At similar parameter scale, attention outperforms SNN by 25% RMSE.",
+            },
+        ],
+        "ablation_v3_features": [
+            {"method": "all combined", "features": 36, "RMSE": 0.9056, "R2": 0.9775},
+            {"method": "rolling stats", "features": 20, "RMSE": 0.9091, "R2": 0.9774},
+            {"method": "FFT", "features": 18, "RMSE": 0.9387, "R2": 0.9759},
+            {"method": "wavelet", "features": 18, "RMSE": 0.9431, "R2": 0.9757},
+            {"method": "baseline (lag only)", "features": 12, "RMSE": 0.9436, "R2": 0.9756},
+        ],
+        "active_deployment_model": {
+            "name": "V2 MLP (causal lag features)",
+            "reason": (
+                "V2 MLP is deployed for realtime inference because its features can be "
+                "reconstructed from live MBTA data without future leakage. V3-V6 models "
+                "achieve higher R^2 in offline evaluation (see experiments table) but use "
+                "rolling/FFT/wavelet windows that need recent delay history per route-stop."
+            ),
         },
     }
 
@@ -466,25 +511,33 @@ def model_metrics() -> dict[str, Any]:
 def data_and_model_notes() -> dict[str, Any]:
     return {
         "data_processing": [
-            "Download MBTA Bus Arrival/Departure CSV files for selected years.",
-            "Convert monthly CSV files into one columnar arrival_departure.parquet file.",
-            "Parse scheduled and actual timestamps, normalize route/stop/direction ids, and compute delay_minutes.",
-            "Filter extreme delay outliers for model training and split by time so future labels do not leak into training.",
+            "MBTA Bus Arrival/Departure data 2020-2026 (161M records, ~18 GB) downloaded via automated script with resume support.",
+            "Per-month CSVs converted to a single columnar Parquet file for ~5x compression and ~10x faster reads.",
+            "Timestamps parsed as UTC-aware datetimes; delay_minutes = (actual - scheduled).total_seconds() / 60.",
+            "Outliers filtered to delay in [-30, 60] minutes (covers >99% of legitimate observations).",
+            "Strict temporal split: training year < 2025, test year >= 2025. No random shuffling.",
+            "2,910 bus stops mapped to 22 Boston neighborhoods via coordinate matching for the equity analysis.",
         ],
         "modeling": [
-            "The earlier neural baseline used 18 causal features: time flags, encoded route/stop/direction, scheduled headway, and training-period historical delay statistics.",
-            "V4 runs a model-family sweep over LightGBM, CatBoost, XGBoost, sklearn boosting, trees, ridge, and dummy baselines.",
-            "The prediction chart now prefers MBTA live prediction and vehicle rows over a synthetic time grid, so realtime output changes with current official predictions and vehicle stop sequence when those fields are available.",
-            "The live dashboard includes a route-stop-hour historical mean baseline so the local model is not compared only to MBTA official predictions.",
-            "The dashboard defaults to the best online-safe V4 bundle when available and falls back to the V2 realtime bundle otherwise.",
-            "V5 is intentionally not enabled until live MBTA official predictions are matched to subsequent actual arrivals.",
+            "V1 baseline: 9 static temporal/categorical features. R^2 = -0.07 (worse than mean prediction).",
+            "V2 historical: V1 plus route/stop/hour delay means and stds. R^2 = -0.11.",
+            "V3 time series: V2 plus 5 lag features, rolling stats, FFT, db4 wavelet, statistical moments. R^2 = 0.9846 (GRU).",
+            "V3 ablation study: 6 feature configurations with the same GRU; rolling statistics contribute most.",
+            "V4 multi-step Seq2Seq: predicts horizon 1, 3, 5 steps; R^2 drops to 0.07-0.12 from 0.98.",
+            "V5 NeuronSpark SNN: K-bit deterministic binary spike encoding, dynamic beta/alpha/V_th. R^2 = 0.9897 on full 3.76M dataset.",
+            "V6 Transformer: 6 encoder layers, d_model=128, 8 heads, GELU. R^2 = 0.9942, RMSE = 0.46 min.",
+        ],
+        "leakage_prevention": [
+            "All time series features use only past values: series.shift(k) for lags, delays[i-window:i] for rolling.",
+            "Scaler.fit() called on training data only; test data only goes through .transform().",
+            "Route/stop/hour historical statistics aggregated from training data; unseen ids in test fall back to global mean.",
+            "FFT and wavelet windows explicitly exclude the current index i.",
         ],
         "interpretation": [
-            "Official-vs-local live charts show model disagreement, not accuracy.",
-            "The main local realtime line is a V5 preview: official live delay plus the latest V4 model's residual from historical baseline; it is useful for demonstration but not an accepted model-quality claim yet.",
-            "True accuracy is reported only where actual arrival/departure labels exist.",
-            "Scheduled headway is entered in minutes in the UI and converted to the seconds scale used by the trained MBTA historical features.",
-            "Large realtime gains likely require vehicle state, current stop sequence, previous-stop delay, and official residual labels.",
+            "V3 GRU's R^2 = 0.9846 reflects strong delay autocorrelation (consecutive buses share traffic conditions).",
+            "Feature engineering matters more than architecture: MLP/LSTM/GRU all reach R^2 > 0.98 with the V3 feature set.",
+            "Multi-step prediction (V4) is hard because external factors (traffic, weather) become unpredictable beyond minutes.",
+            "Transformer (V6) beats SNN (V5) at the same parameter count: surrogate-gradient SNN training is less sample-efficient than backprop.",
         ],
     }
 

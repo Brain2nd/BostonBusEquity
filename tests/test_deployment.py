@@ -66,6 +66,28 @@ def test_dashboard_visualization_catalog_includes_our_results() -> None:
     assert not missing, f"visualization catalog missing our entries: {missing}"
 
 
+def test_dashboard_visualization_catalog_excludes_v4_lightgbm_cards() -> None:
+    """yaobc77's V4 LightGBM-specific cards should not appear in the catalog."""
+    from src.inference.dashboard import VISUALIZATION_CATALOG
+
+    forbidden = {
+        "v4_model_sweep",
+        "v4_model_deployability_scores",
+        "v4_optimization_story",
+        "mbta_realtime_model_gap_story",
+        "mbta_realtime_official_vs_model",
+    }
+    ids = {entry["id"] for entry in VISUALIZATION_CATALOG}
+    bad = forbidden & ids
+    assert not bad, f"V4 LightGBM cards still in catalog: {bad}"
+
+    # Also: every claim/caption must not say 'LightGBM' since we don't deploy that
+    for entry in VISUALIZATION_CATALOG:
+        text = (entry.get("claim", "") + " " + entry.get("caption", "")).lower()
+        assert "lightgbm" not in text, f"{entry['id']} mentions LightGBM"
+        assert "v4 lightgbm" not in text, f"{entry['id']} mentions V4 LightGBM"
+
+
 def test_visualization_catalog_filenames_exist_on_disk() -> None:
     """Every catalog entry must point at a file that actually exists."""
     from src.inference.dashboard import VISUALIZATION_CATALOG
@@ -337,3 +359,139 @@ def test_models_init_exposes_pr3_and_pr4_apis() -> None:
         "V2MLPPredictor",
     ):
         assert hasattr(models, name), f"src.models is missing {name}"
+
+
+# ---------------------------------------------------------------------------
+# Our project's V3 model checkpoints actually load + predict
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "checkpoint_name,architecture",
+    [
+        ("delay_gru_v3_fixed_no_leakage.pt", "GRU"),
+        ("delay_lstm_v3_fixed_no_leakage.pt", "LSTM"),
+        ("delay_mlp_v3_fixed_no_leakage.pt", "MLP"),
+    ],
+)
+def test_v3_checkpoint_loads_and_predicts(checkpoint_name: str, architecture: str) -> None:
+    """Our V3 (no-leakage) GRU/LSTM/MLP checkpoints must load into the V3 architecture."""
+    pytest.importorskip("torch")
+    import torch
+
+    from src.models.train_delay_predictor_v3_fixed import (
+        GRUPredictor,
+        LSTMPredictor,
+        MLPPredictor,
+    )
+
+    arch_map = {"GRU": GRUPredictor, "LSTM": LSTMPredictor, "MLP": MLPPredictor}
+    cls = arch_map[architecture]
+
+    checkpoint_path = MODELS_DIR / checkpoint_name
+    assert checkpoint_path.exists(), f"missing checkpoint {checkpoint_path}"
+
+    state_dict = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    proj_weight = state_dict["proj.weight"] if "proj.weight" in state_dict else state_dict.get("net.0.weight")
+    input_size = proj_weight.shape[1]
+    assert input_size == 41, (
+        f"V3 expects 41 features but checkpoint has {input_size}"
+    )
+
+    model = cls(input_size=input_size)
+    model.load_state_dict(state_dict)
+    model.eval()
+
+    # Smoke prediction
+    out = model(torch.randn(2, input_size))
+    assert out.shape == (2, 1)
+    assert torch.isfinite(out).all(), f"{architecture} produced non-finite predictions"
+
+
+def test_v1_v2_pytorch_checkpoints_load() -> None:
+    """V1/V2 GRU/LSTM/MLP bundle-format checkpoints must load with state_dict key intact."""
+    pytest.importorskip("torch")
+    import torch
+
+    bundles = [
+        "delay_predictor_gru_v1_baseline_temporal.pt",
+        "delay_predictor_gru_v2_lag_features_temporal.pt",
+        "delay_predictor_lstm_v1_baseline_temporal.pt",
+        "delay_predictor_lstm_v2_lag_features_temporal.pt",
+        "delay_predictor_mlp_v1_baseline_temporal.pt",
+        "delay_predictor_mlp_v2_lag_features_temporal.pt",
+    ]
+
+    for name in bundles:
+        path = MODELS_DIR / name
+        assert path.exists(), f"missing {name}"
+        bundle = torch.load(path, map_location="cpu", weights_only=False)
+        assert isinstance(bundle, dict), f"{name} is not a dict bundle"
+        assert "model_state_dict" in bundle, f"{name} missing model_state_dict"
+
+
+# ---------------------------------------------------------------------------
+# /api/model-metrics serves OUR project numbers, not yaobc77's V4 LightGBM
+# ---------------------------------------------------------------------------
+
+
+def test_model_metrics_uses_our_project_numbers() -> None:
+    """/api/model-metrics must report our V1->V6 progression with positive R^2 for V3+."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/model-metrics")
+            assert response.status_code == 200
+            return response.json()
+
+    body = asyncio.run(_run())
+
+    # Must surface our V1->V6 progression
+    assert "experiments" in body
+    versions = {exp["version"] for exp in body["experiments"]}
+    assert versions == {"V1", "V2", "V3", "V4", "V5", "V6"}, f"unexpected versions: {versions}"
+
+    # Best should be V6 Transformer
+    summary = body["summary"]
+    assert "Transformer" in summary["best_model"]
+    assert summary["best_test_R2"] > 0.99
+    assert summary["best_test_RMSE"] < 0.5
+
+    # The reported best R^2 must beat yaobc77's V4 LightGBM (which had R^2 ~ -0.04)
+    assert summary["best_test_R2"] > 0
+
+    # No yaobc-specific Windows paths leaked into the response
+    body_str = str(body)
+    assert "yaobc" not in body_str.lower()
+    assert "C:\\\\" not in body_str
+    assert "lightgbm_q35" not in body_str
+
+
+def test_data_model_notes_describes_our_pipeline() -> None:
+    """/api/data-model-notes must describe our V1-V6 pipeline, not the V4 LightGBM sweep."""
+    httpx = pytest.importorskip("httpx")
+    from src.inference.api import create_app
+
+    async def _run() -> dict:
+        transport = httpx.ASGITransport(app=create_app(V2_BUNDLE))
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/data-model-notes")
+            assert response.status_code == 200
+            return response.json()
+
+    body = asyncio.run(_run())
+    assert "data_processing" in body
+    assert "modeling" in body
+
+    modeling_str = " ".join(body["modeling"])
+    # Our terminology
+    for term in ("V1", "V3", "V5", "V6", "Transformer", "NeuronSpark", "FFT", "wavelet"):
+        assert term in modeling_str, f"data-model-notes missing our term '{term}'"
+
+    # No yaobc77 V4 LightGBM jargon
+    assert "LightGBM" not in modeling_str
+    assert "CatBoost" not in modeling_str
+    assert "XGBoost" not in modeling_str

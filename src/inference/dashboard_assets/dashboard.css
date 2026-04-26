@@ -277,6 +277,37 @@ dt {
   line-height: 1.55;
 }
 
+.experiment-table {
+  width: 100%;
+  margin-top: 16px;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.experiment-table th,
+.experiment-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.experiment-table th {
+  color: var(--ink);
+  background: rgba(244, 239, 231, 0.5);
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.experiment-table td {
+  color: var(--muted);
+}
+
+.experiment-table tr:last-child td {
+  border-bottom: none;
+}
+
 label {
   display: grid;
   gap: 6px;
