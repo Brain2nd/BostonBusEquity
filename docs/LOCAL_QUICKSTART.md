@@ -53,7 +53,7 @@ python -m pip install -r requirements.txt
 From the repository root:
 
 ```powershell
-.\tools\start_dashboard.ps1
+python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib
 ```
 
 Then open:
@@ -67,7 +67,7 @@ http://127.0.0.1:8000/
 From the repository root:
 
 ```powershell
-.\tools\run_april_checkin_validation.ps1
+pytest tests/test_realtime_inference.py tests/test_v4_delay_predictor.py -q
 ```
 
 This is intended as a lightweight local verification step for the current April deliverables.

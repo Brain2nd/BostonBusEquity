@@ -13,7 +13,6 @@ requirements.txt
 docs/
 src/
 tests/
-tools/
 ```
 
 Model and dashboard artifacts needed for the current demo:
@@ -91,7 +90,7 @@ Copy the project files into the clean clone, excluding the folders listed above.
 
 ```powershell
 git status --short
-git add .gitignore README.md requirements.txt docs src tests tools `
+git add .gitignore README.md requirements.txt docs src tests `
   reports/DELAY_PREDICTION_V4_OPTIMIZATION_REPORT.md `
   reports/MBTA_REALTIME_OFFICIAL_VS_MODEL.md `
   reports/MODEL_SCORING_GUIDE.md `
@@ -130,7 +129,7 @@ git branch --show-current
 Start the dashboard:
 
 ```powershell
-.\tools\start_dashboard.ps1
+python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib
 ```
 
 Open:
@@ -142,5 +141,5 @@ http://127.0.0.1:8000/
 Run quick validation:
 
 ```powershell
-.\tools\run_april_checkin_validation.ps1
+pytest tests/test_realtime_inference.py -q
 ```

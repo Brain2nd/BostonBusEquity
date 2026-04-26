@@ -4,6 +4,8 @@ A data analysis project examining MBTA bus service performance and its impact on
 
 ## April Check-In Deliverables
 
+These links point to the **current April deliverables after the latest merged dashboard and realtime updates**.
+
 - Technical check-in report: [`docs/APRIL_CHECKIN_TECHNICAL_REPORT.md`](docs/APRIL_CHECKIN_TECHNICAL_REPORT.md)
 - GitHub submission guide: [`docs/GITHUB_SUBMISSION_GUIDE.md`](docs/GITHUB_SUBMISSION_GUIDE.md)
 - Local quickstart: [`docs/LOCAL_QUICKSTART.md`](docs/LOCAL_QUICKSTART.md)
@@ -11,7 +13,7 @@ A data analysis project examining MBTA bus service performance and its impact on
 - Realtime dashboard command:
 
 ```powershell
-.\tools\start_dashboard.ps1
+python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib
 ```
 
 Then open `http://127.0.0.1:8000/`.
