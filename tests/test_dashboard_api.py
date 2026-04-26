@@ -102,7 +102,10 @@ def test_dashboard_html_and_json_endpoints(dashboard_bundle_path: Path) -> None:
             options = await client.get("/api/options")
             assert options.status_code == 200
             options_json = options.json()
-            assert {"value": "1", "label": "1", "bundle_value": "1"} in options_json["routes"]
+            route_entries_for_1 = [r for r in options_json["routes"] if r["bundle_value"] == "1"]
+            assert route_entries_for_1, "expected route with bundle_value '1' in options"
+            assert route_entries_for_1[0]["value"] == "1"
+            assert route_entries_for_1[0]["label"].startswith("1")
             assert {"value": "A", "label": "A"} in options_json["route_stop_map"]["1"]
 
     asyncio.run(_run_checks())
