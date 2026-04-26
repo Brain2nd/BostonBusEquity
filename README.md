@@ -6,6 +6,8 @@ A data analysis project examining MBTA bus service performance and its impact on
 
 - Technical check-in report: [`docs/APRIL_CHECKIN_TECHNICAL_REPORT.md`](docs/APRIL_CHECKIN_TECHNICAL_REPORT.md)
 - GitHub submission guide: [`docs/GITHUB_SUBMISSION_GUIDE.md`](docs/GITHUB_SUBMISSION_GUIDE.md)
+- Local quickstart: [`docs/LOCAL_QUICKSTART.md`](docs/LOCAL_QUICKSTART.md)
+- Review checklist: [`docs/APRIL_CHECKIN_REVIEW_CHECKLIST.md`](docs/APRIL_CHECKIN_REVIEW_CHECKLIST.md)
 - Realtime dashboard command:
 
 ```powershell
