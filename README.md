@@ -216,6 +216,27 @@ python src/run_analysis.py --quick
 python src/run_analysis.py --validate
 ```
 
+### Real-Time Inference
+
+The repository now includes a real-time inference entrypoint that reuses the
+existing delay prediction checkpoints already stored in `models/`.
+
+```bash
+# Run real-time predictions with the existing baseline checkpoint
+python -m src.models.run_realtime_inference --print-features
+
+# Benchmark baseline inference latency
+python -m src.models.run_realtime_inference --benchmark --iterations 200 --warmup 20
+
+# Rebuild preprocessing artifacts from a local historical parquet/csv file
+python -m src.models.run_realtime_inference --historical-data data/processed/arrival_departure.parquet --artifacts models/realtime_baseline_artifacts.pt
+```
+
+Notes:
+- The inference path does not create a new model; it only reloads existing project checkpoints.
+- For MBTA live integration, normalize real-time API payloads into the model input schema or pass them through `MBTARealtimeAdapter`.
+- If you have a large historical dataset locally, save artifacts once with `--artifacts` to avoid rebuilding scalers and encoders on every run.
+
 ## References
 
 - [Livable Streets Report](https://www.livablestreets.info/)

@@ -124,3 +124,8 @@ secrets/
 
 # Claude
 CLAUDE.md
+
+# Codex / local agent workspace
+.codex/
+.agents/
+codex/
