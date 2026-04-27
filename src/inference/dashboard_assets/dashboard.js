@@ -941,6 +941,16 @@ async function handleLiveCompare(event) {
 
   document.getElementById("live-mode").textContent = "Loading";
   document.getElementById("live-message").textContent = "Calling MBTA V3 API and local model...";
+  // Update the caption to reference the model the user actually picked
+  const liveCaption = document.getElementById("live-caption");
+  const registry = state.modelRegistry || [];
+  const picked = registry.find((m) => m.id === pickedModel);
+  if (liveCaption && picked) {
+    liveCaption.textContent =
+      `The chart above compares MBTA official live predictions and our ${picked.label.split(" - ")[0]} ` +
+      `predictions for each upcoming trip. Same scheduled time fed to both. ` +
+      `Differences are model disagreement; true accuracy requires matched actual arrivals.`;
+  }
   try {
     const result = await fetchJson("/api/live-compare", {
       method: "POST",

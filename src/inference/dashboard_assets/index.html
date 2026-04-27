@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Boston Bus Equity Realtime Dashboard</title>
-    <link rel="stylesheet" href="/assets/dashboard.css?v=20260426-livepicker6" />
+    <link rel="stylesheet" href="/assets/dashboard.css?v=20260427-dynamiccaption7" />
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   </head>
   <body>
@@ -217,11 +217,11 @@
           <p id="live-message" class="muted">Click the button to query MBTA V3 live predictions.</p>
           <div id="live-chart"></div>
           <figure class="report-figure">
-            <figcaption>
-              The chart above compares MBTA official live predictions and our local V2
-              MLP predictions for each upcoming trip. The same scheduled time is fed to
-              both. Differences are model disagreement; true accuracy can only be
-              evaluated once each trip's actual arrival time is recorded.
+            <figcaption id="live-caption">
+              The chart above compares MBTA official live predictions and our local
+              model's predictions for each upcoming trip. The same scheduled time is
+              fed to both. Differences are model disagreement; true accuracy can only
+              be evaluated once each trip's actual arrival time is recorded.
             </figcaption>
           </figure>
         </div>
@@ -296,6 +296,6 @@
       </p>
     </footer>
 
-    <script src="/assets/dashboard.js?v=20260426-livepicker6"></script>
+    <script src="/assets/dashboard.js?v=20260427-dynamiccaption7"></script>
   </body>
 </html>
