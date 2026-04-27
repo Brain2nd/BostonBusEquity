@@ -4,6 +4,7 @@ A data analysis project examining MBTA bus service performance and its impact on
 
 ## April Check-In Deliverables
 
+- TA-facing check-in handout: [`docs/APRIL_CHECKIN_TA_HANDOUT.md`](docs/APRIL_CHECKIN_TA_HANDOUT.md)
 - Technical check-in report: [`docs/APRIL_CHECKIN_TECHNICAL_REPORT.md`](docs/APRIL_CHECKIN_TECHNICAL_REPORT.md)
 - GitHub submission guide: [`docs/GITHUB_SUBMISSION_GUIDE.md`](docs/GITHUB_SUBMISSION_GUIDE.md)
 - Realtime dashboard command:
