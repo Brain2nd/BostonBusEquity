@@ -476,10 +476,14 @@ def _v4_seq2seq_predict(
     stats = fallback_runtime.stats
     global_mean = float(stats.get("global_mean", 0.0))
 
-    # Real recent-delay sequence for this route-stop pair if we have it.
-    # _per_route_stop_recent_delays already indexes both padded ('01') and
-    # unpadded ('1') route ids so a single lookup suffices.
-    history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id))) or []
+    # Prefer live MBTA recent delays (matches V5/V6 priority), fall back to
+    # historical parquet, then global mean.
+    history = _fetch_live_recent_delays(route_id, stop_id, direction_id) or []
+    lag_source_v4 = "live_mbta" if history else "global_mean"
+    if not history:
+        history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id))) or []
+        if history:
+            lag_source_v4 = "historical_parquet"
     used_defaults_v4: list[str] = []
     if len(history) >= seq_len:
         seq = history[-seq_len:]
@@ -506,6 +510,7 @@ def _v4_seq2seq_predict(
         "model_latency_ms": float(latency_ms),
         "used_defaults": used_defaults_v4,
         "used_history": len(history),
+        "lag_source": lag_source_v4,
         "horizon_predictions_minutes": [round(p, 4) for p in horizon_predictions],
     }
 
@@ -598,31 +603,101 @@ def _per_route_stop_recent_delays(top_n: int = 600, history: int = 12) -> dict[t
     return cache
 
 
-def _lag_features_for(route_id: str, stop_id: str, global_mean: float) -> list[float]:
-    """Return the last 5 delays (most recent first) + first difference.
+# Short-lived cache (60 s) of MBTA live recent delays per route-stop
+_LIVE_LAG_CACHE: dict[tuple[str, str], tuple[float, list[float]]] = {}
+_LIVE_LAG_TTL_SECONDS = 60
 
-    Falls back to [global_mean]*5 + [0] when the pair has no history. The
-    cache itself indexes both padded ('01') and unpadded ('1') route IDs,
-    so callers don't have to guess the format.
+
+def _fetch_live_recent_delays(
+    route_id: str, stop_id: str, direction_id: str | int | None = None,
+) -> list[float] | None:
+    """Pull the next 12 upcoming-trip predictions from MBTA V3 and use their
+    official_delay_minutes as the most recent delay history for this route-stop.
+
+    Returns None when the API is unreachable or returns no rows. Result is
+    cached for ~60 seconds to avoid hammering the MBTA API on every request.
     """
+    import time as _time
+
+    key = (str(route_id), str(stop_id))
+    cached = _LIVE_LAG_CACHE.get(key)
+    if cached and (_time.time() - cached[0]) < _LIVE_LAG_TTL_SECONDS:
+        return cached[1]
+
+    try:
+        client = MBTAV3Client()
+        snapshots = collect_live_snapshot(
+            client=client,
+            route_id=route_id,
+            stop_id=stop_id,
+            direction_id=direction_id,
+            prediction_limit=12,
+            vehicle_limit=20,
+        )
+        merged = snapshots["merged"]
+        if merged.empty:
+            return None
+        # official_delay_minutes is MBTA's own predicted delay for each
+        # upcoming trip - the closest live signal to "recent typical delay"
+        delays = [
+            float(x) for x in merged["official_delay_minutes"].dropna().tolist()
+        ]
+        if len(delays) < 2:
+            return None
+    except Exception:
+        return None
+
+    _LIVE_LAG_CACHE[key] = (_time.time(), delays)
+    return delays
+
+
+def _lag_features_for(
+    route_id: str, stop_id: str, global_mean: float,
+    direction_id: str | int | None = None,
+) -> tuple[list[float], str]:
+    """Return (5 lags + diff_1, source_label).
+
+    Priority order:
+      1. MBTA live API recent delays (most accurate for "right now").
+      2. Historical parquet recent delays (fallback when API is down).
+      3. Global mean fill (last-resort cold start).
+    """
+    live = _fetch_live_recent_delays(route_id, stop_id, direction_id)
+    if live and len(live) >= 2:
+        last_5 = list(reversed(live[-5:]))
+        while len(last_5) < 5:
+            last_5.append(global_mean)
+        diff_1 = (live[-1] - live[-2]) if len(live) >= 2 else 0.0
+        return last_5 + [diff_1], "live_mbta"
+
     history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id)))
-    if not history:
-        return [global_mean] * 5 + [0.0]
-    last_5 = list(reversed(history[-5:]))
-    while len(last_5) < 5:
-        last_5.append(global_mean)
-    diff_1 = (history[-1] - history[-2]) if len(history) >= 2 else 0.0
-    return last_5 + [diff_1]
+    if history and len(history) >= 2:
+        last_5 = list(reversed(history[-5:]))
+        while len(last_5) < 5:
+            last_5.append(global_mean)
+        diff_1 = (history[-1] - history[-2]) if len(history) >= 2 else 0.0
+        return last_5 + [diff_1], "historical_parquet"
+
+    return [global_mean] * 5 + [0.0], "global_mean"
 
 
 def _rolling_stats_for(
     route_id: str, stop_id: str, global_mean: float, global_std: float,
-) -> tuple[float, float, float, float]:
-    """Return (roll_mean_5, roll_std_5, roll_mean_10, roll_std_10)."""
+    direction_id: str | int | None = None,
+) -> tuple[tuple[float, float, float, float], str]:
+    """Return ((roll_mean_5, roll_std_5, roll_mean_10, roll_std_10), source)."""
     import numpy as np
-    history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id)))
+
+    live = _fetch_live_recent_delays(route_id, stop_id, direction_id)
+    source = "live_mbta"
+    history = live if live else None
     if not history:
-        return (global_mean, global_std, global_mean, global_std)
+        history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id)))
+        source = "historical_parquet" if history else "global_mean"
+
+    if not history:
+        return (global_mean, global_std, global_mean, global_std), source
+
     arr = np.array(history, dtype=np.float32)
     last5 = arr[-5:] if len(arr) >= 5 else arr
     last10 = arr[-10:] if len(arr) >= 10 else arr
@@ -631,7 +706,7 @@ def _rolling_stats_for(
         float(np.std(last5)) if len(last5) > 1 else global_std,
         float(np.mean(last10)) if len(last10) else global_mean,
         float(np.std(last10)) if len(last10) > 1 else global_std,
-    )
+    ), source
 
 
 @lru_cache(maxsize=4)
@@ -714,17 +789,17 @@ def _v5_v6_predict(
     hour_sin = float(np.sin(2 * np.pi * hour / 24))
     hour_cos = float(np.cos(2 * np.pi * hour / 24))
 
-    # Real per-(route, stop) recent-delay history from the historical parquet.
-    # Falls back to global mean only when this pair has no recent history.
-    history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id)))
+    # Pull lag + rolling features. Priority is live MBTA recent delays so
+    # the model sees today's pattern, falling through to the historical
+    # parquet, then global mean as last resort.
+    lag_block, lag_source = _lag_features_for(route_id, stop_id, global_mean, direction_id)
+    roll_block, roll_source = _rolling_stats_for(route_id, stop_id, global_mean, global_std, direction_id)
+
     used_defaults_dynamic: list[str] = []
-    if history:
-        lag_block = _lag_features_for(route_id, stop_id, global_mean)
-        roll_block = _rolling_stats_for(route_id, stop_id, global_mean, global_std)
-    else:
-        lag_block = [global_mean] * 5 + [0.0]
-        roll_block = (global_mean, global_std, global_mean, global_std)
-        used_defaults_dynamic.extend(["lag_features", "rolling_stats"])
+    if lag_source == "global_mean":
+        used_defaults_dynamic.append("lag_features")
+    if roll_source == "global_mean":
+        used_defaults_dynamic.append("rolling_stats")
 
     feature_vector = np.array(
         [is_weekend, is_rush, hour_sin, hour_cos] + list(lag_block) + list(roll_block),
@@ -752,6 +827,15 @@ def _v5_v6_predict(
     pred_scaled = float(out.reshape(-1)[0])
     pred = pred_scaled * float(scaler_y["scale"][0]) + float(scaler_y["mean"][0])
 
+    # Estimate how many real points fed the lag features
+    if lag_source == "live_mbta":
+        live_cached = _LIVE_LAG_CACHE.get((str(route_id), str(stop_id)))
+        history_len = len(live_cached[1]) if live_cached else 0
+    elif lag_source == "historical_parquet":
+        history_len = len(_per_route_stop_recent_delays().get((str(route_id), str(stop_id))) or [])
+    else:
+        history_len = 0
+
     return {
         "predicted_delay_minutes": pred,
         "model": entry["label"],
@@ -762,7 +846,8 @@ def _v5_v6_predict(
         "test_RMSE": entry["test_RMSE"],
         "model_latency_ms": float(latency_ms),
         "used_defaults": used_defaults_dynamic,
-        "used_history": len(history) if history else 0,
+        "used_history": history_len,
+        "lag_source": lag_source,
     }
 
 

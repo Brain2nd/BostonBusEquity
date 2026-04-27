@@ -62,6 +62,7 @@ class PredictResponse(BaseModel):
     test_RMSE: float | None = None
     model_latency_ms: float | None = None
     used_history: int | None = None
+    lag_source: str | None = None
 
 
 class PredictHorizonRequest(PredictRequest):
