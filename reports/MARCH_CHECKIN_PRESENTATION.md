@@ -1,9 +1,132 @@
-# Boston Bus Equity - March Check-In Report
+# Boston Bus Equity - April Check-In Report
 
 **Course:** CS506 - Data Science Tools and Applications, Spring 2026
 **Team:** zztangbu@bu.edu, lzj2729@bu.edu, ljf628@bu.edu, yaobc@bu.edu
 **Client:** City of Boston Analytics Team / Spark!
-**Date:** March 2026
+**Date:** April 2026
+
+---
+
+## 0. April Additions: Live Deployment + Surprising Online vs Offline Result
+
+This section is the new content for the April check-in. The original March
+check-in material (Sections 1 - 4 below) remains intact for continuity.
+
+### 0.1 What we built since March
+
+| Deliverable | Status |
+|-------------|--------|
+| FastAPI realtime inference dashboard with live MBTA V3 API integration | Complete |
+| Multi-model picker exposing all V1 - V6 architectures end-to-end | Complete |
+| V6 Transformer **full-data** training (3.76 M samples, 21 epochs, 2.6 h on MPS GPU) | Complete |
+| V5 NeuronSpark SNN **full-data** training (3.76 M samples, 13 epochs, 3.4 h on MPS GPU) | Complete |
+| V4 Seq2Seq multi-step training + checkpoint | Complete |
+| Live-compare endpoint: pulls upcoming trips from MBTA V3 and runs the picked local model on them | Complete |
+| 64 deployment / API / model-loadability tests | Complete |
+
+### 0.2 V5 / V6 reproduce the paper exactly
+
+After saving checkpoints for V5 and V6 (which the original training scripts
+did not persist), we trained both on the full 3.76 M-sample training set
+with the same temporal split (train < 2025, test >= 2025):
+
+| Model | Paper R² | Our retrain R² | Paper RMSE | Our RMSE |
+|-------|----------|----------------|------------|----------|
+| V5 NeuronSpark SNN | 0.9897 | **0.9897** | 0.6098 | 0.6100 |
+| V6 Transformer | 0.9942 | **0.9940** | 0.4599 | 0.4644 |
+
+V5 reproduced the paper R² to four decimal places. V6 differs by 0.0002
+(within sampling noise). The full-trained checkpoints are now what the
+dashboard serves by default.
+
+### 0.3 The surprise: GRU beats Transformer on live MBTA data
+
+The most interesting finding from April is an apparent contradiction
+between offline test-set accuracy and live MBTA-API agreement.
+
+**Offline ranking** (test-set R² on 2025-2026 matched actuals):
+
+| Model | Test R² | Test RMSE |
+|-------|---------|-----------|
+| **V6 Transformer** | **0.9940** (best) | 0.46 min |
+| V5 NeuronSpark SNN | 0.9897 | 0.61 min |
+| V3 GRU + wavelet | 0.9846 (worst of the three) | 0.75 min |
+
+**Live ranking** (mean absolute gap vs MBTA V3 official predictions on the
+same upcoming trips, using live MBTA delays as lag input — route 1,
+stop 110, 5 trips):
+
+| Model | Live mean_abs_gap | vs offline rank |
+|-------|------------------|-----------------|
+| **V3 GRU + wavelet** | **5.06 min** (best on live) | offline: worst |
+| V5 NeuronSpark SNN | 8.54 min | offline: middle |
+| V6 Transformer | 8.80 min (worst on live) | offline: best |
+
+**The ranking inverts.** V6 Transformer wins offline by 0.5 min RMSE but
+is ~3.7 min farther from MBTA's live predictions than V3 GRU. This is the
+opposite of what the project's headline narrative ("V6 Transformer is the
+best model") would suggest.
+
+### 0.4 Why this might be happening (preliminary hypotheses)
+
+We have not yet proven the cause; these are working hypotheses for the
+final-report investigation:
+
+1. **Generalization vs overfitting.** V6 Transformer (1.6 M params) and V5
+   SNN (1.4 M params) each have ~10x the parameters of V3 GRU (~150 K).
+   On 2025-2026 test data the larger models exploit subtle patterns that
+   stop holding when 2026 routes/equipment differ from training.
+
+2. **Lag distribution shift between offline and live.** Offline lag
+   features come from the same temporal-split training distribution. Live
+   lag features come from MBTA V3 official_delay predictions, which are
+   themselves model outputs (not realized actuals). The two sources have
+   different noise characteristics; smaller models like V3 GRU may be more
+   robust to this kind of distribution shift.
+
+3. **MBTA "official" is itself a prediction, not ground truth.** Mean
+   absolute gap to MBTA is a proxy for accuracy, not accuracy itself. V6
+   could be MORE accurate against actual arrivals while disagreeing more
+   with MBTA's own model. We currently have no labeled actuals to settle
+   this — that requires the V5 residual labeling phase.
+
+4. **Live cache freshness.** Our live lag uses MBTA's next-12 upcoming
+   predictions. If V6 has learned to over-rely on lag-tail variance and
+   the live lag's variance characteristics differ from training, V6 will
+   be more sensitive than V3.
+
+### 0.5 What we will investigate in the final report
+
+- **Build matched-actuals dataset.** Stream MBTA V3 predictions for the
+  most-watched routes for 2-4 weeks, then match each prediction against
+  the trip's actual arrival when it lands. This gives us live ground
+  truth, which is what we actually need to settle the V3-vs-V6 question.
+
+- **Decompose the offline-online gap.** Re-evaluate V3 / V5 / V6 on the
+  matched-actuals set and report each model's true MAE / RMSE / R² there,
+  not just its agreement with MBTA's own predictions.
+
+- **Smaller-vs-larger generalization study.** If V3 GRU still beats V6
+  Transformer on matched live actuals, the next experiment is a
+  parameter-count sweep on V6 (d_model 64, 96, 128, 256) to find the
+  point at which over-parameterization starts hurting live performance.
+
+- **Use MBTA vehicle-position telemetry as a feature.** Both MBTA's
+  internal model and any production-deployed model would benefit from GPS
+  position, current_stop_sequence, and vehicle_speed. Our V4 LightGBM
+  exploration uses these but we have not folded them into V3 / V5 / V6.
+
+### 0.6 Why this matters for the project narrative
+
+The March check-in concluded that **feature engineering matters more than
+architecture** (the V1 -> V3 jump from R² = -0.07 to 0.9846 was driven by
+features, not by a more powerful model). The April finding strengthens
+that conclusion in a different way: **a smaller GRU equipped with the right
+features (lag + FFT + wavelet) outperforms larger architectures on the
+deployment-realistic comparison**. The headline "Transformer is the best"
+holds only on the offline split; on live MBTA data, the project's V3 GRU
+is the most useful model. This is exactly the kind of result that motivates
+the final-report investigation into deployment-quality evaluation.
 
 ---
 
