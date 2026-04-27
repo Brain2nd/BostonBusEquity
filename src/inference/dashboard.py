@@ -519,7 +519,9 @@ def _per_route_stop_recent_delays(top_n: int = 600, history: int = 12) -> dict[t
     predictions that look unconvincing in the live demo. We pay this cost once
     at first request and reuse it for every subsequent call.
 
-    Caps at top_n route-stop pairs by frequency to keep memory/CPU bounded.
+    Reads from the LAST few row groups of the parquet so the cached delays
+    reflect recent history (sorted by service_date) rather than whatever
+    happens to be in row group 0. Caps at top_n route-stop pairs.
     """
     import numpy as np
     import pandas as pd
@@ -532,26 +534,34 @@ def _per_route_stop_recent_delays(top_n: int = 600, history: int = 12) -> dict[t
         pf = pq.ParquetFile(HISTORICAL_PARQUET)
         if pf.num_row_groups == 0:
             return {}
-        # Read one row group; that's already millions of rows
-        table = pf.read_row_group(0, columns=["route_id", "stop_id", "scheduled", "actual"])
-        df = table.to_pandas()
+        # Pull the last 3 row groups (~3M rows) so we cover the most recent
+        # observations and still keep memory bounded.
+        recent_indices = list(range(max(0, pf.num_row_groups - 3), pf.num_row_groups))
+        tables = [
+            pf.read_row_group(i, columns=["service_date", "route_id", "stop_id", "scheduled", "actual"])
+            for i in recent_indices
+        ]
+        df = pd.concat([t.to_pandas() for t in tables], ignore_index=True)
     except Exception:
         return {}
 
-    # Compute delay
-    df["scheduled"] = pd.to_datetime(df["scheduled"], format="mixed", errors="coerce", utc=True)
-    df["actual"] = pd.to_datetime(df["actual"], format="mixed", errors="coerce", utc=True)
-    df["delay"] = (df["actual"] - df["scheduled"]).dt.total_seconds() / 60.0
-    df = df.dropna(subset=["delay", "scheduled"])
+    # Build a real combined datetime so we can sort by recency. service_date
+    # holds the calendar day; `scheduled` is a time-of-day string. The
+    # delay calculation only needs (actual - scheduled), but for sorting we
+    # use service_date alone (per-row timestamp not needed for ordering).
+    df["service_date"] = pd.to_datetime(df["service_date"], errors="coerce")
+    df["scheduled_t"] = pd.to_datetime(df["scheduled"], format="mixed", errors="coerce", utc=True)
+    df["actual_t"] = pd.to_datetime(df["actual"], format="mixed", errors="coerce", utc=True)
+    df["delay"] = (df["actual_t"] - df["scheduled_t"]).dt.total_seconds() / 60.0
+    df = df.dropna(subset=["delay", "service_date"])
     df = df[(df["delay"] >= -30) & (df["delay"] <= 60)]
 
-    # Pick the top_n busiest route-stop pairs
+    # Pick the top_n busiest route-stop pairs in this window
     counts = df.groupby(["route_id", "stop_id"]).size().sort_values(ascending=False).head(top_n)
     pairs = set(counts.index.tolist())
     df = df[df.set_index(["route_id", "stop_id"]).index.isin(pairs)]
-
-    # For each pair, take the last `history` delays sorted by scheduled
-    df = df.sort_values(["route_id", "stop_id", "scheduled"])
+    # Sort by service_date so .tail(history) returns the most recent delays
+    df = df.sort_values(["route_id", "stop_id", "service_date"])
     cache: dict[tuple[str, str], list[float]] = {}
 
     def _route_aliases(route_str: str) -> list[str]:
