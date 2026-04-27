@@ -321,15 +321,20 @@ async function handlePredict(event) {
     const minutes = result.predicted_delay_minutes;
     value.textContent = `${minutes.toFixed(2)} min`;
     const r2Part =
-      typeof result.test_R2 === "number" ? ` test R^2 = ${result.test_R2.toFixed(4)}.` : "";
+      typeof result.test_R2 === "number" ? ` Test R² = ${result.test_R2.toFixed(4)}.` : "";
     const latencyPart =
       typeof result.model_latency_ms === "number"
         ? ` Inference: ${result.model_latency_ms.toFixed(1)} ms.`
         : "";
+    const historyPart =
+      typeof result.used_history === "number" && result.used_history > 0
+        ? ` Used ${result.used_history} real recent delays.`
+        : "";
     const defaultsPart = result.used_defaults?.length
-      ? ` Defaults: ${result.used_defaults.join(", ")}.`
+      ? ` Defaulted: ${result.used_defaults.join(", ")}.`
       : "";
-    detail.textContent = `Model: ${result.model}.${r2Part}${latencyPart}${defaultsPart}`;
+    detail.textContent =
+      `Model: ${result.model}.${r2Part}${latencyPart}${historyPart}${defaultsPart}`;
 
     const horizon = await fetchJson("/api/predict-horizon", {
       method: "POST",
