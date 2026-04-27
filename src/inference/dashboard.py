@@ -476,14 +476,16 @@ def _v4_seq2seq_predict(
     stats = fallback_runtime.stats
     global_mean = float(stats.get("global_mean", 0.0))
 
-    # Real recent-delay sequence for this route-stop pair if we have it
-    cache = _per_route_stop_recent_delays()
-    history = cache.get((str(route_id), str(stop_id))) or cache.get(("0" + str(route_id), str(stop_id))) or []
+    # Real recent-delay sequence for this route-stop pair if we have it.
+    # _per_route_stop_recent_delays already indexes both padded ('01') and
+    # unpadded ('1') route ids so a single lookup suffices.
+    history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id))) or []
+    used_defaults_v4: list[str] = []
     if len(history) >= seq_len:
         seq = history[-seq_len:]
     else:
-        # Pad missing slots at the start with global mean
         seq = [global_mean] * (seq_len - len(history)) + list(history)
+        used_defaults_v4.append("delay_history_sequence")
     seed = np.array(seq, dtype=np.float32).reshape(1, seq_len, 1)
     start = _time.perf_counter()
     with torch.no_grad():
@@ -502,7 +504,8 @@ def _v4_seq2seq_predict(
         "test_R2": entry["test_R2"],
         "test_RMSE": entry["test_RMSE"],
         "model_latency_ms": float(latency_ms),
-        "used_defaults": ["delay_history_sequence"],
+        "used_defaults": used_defaults_v4,
+        "used_history": len(history),
         "horizon_predictions_minutes": [round(p, 4) for p in horizon_predictions],
     }
 
@@ -550,44 +553,64 @@ def _per_route_stop_recent_delays(top_n: int = 600, history: int = 12) -> dict[t
     # For each pair, take the last `history` delays sorted by scheduled
     df = df.sort_values(["route_id", "stop_id", "scheduled"])
     cache: dict[tuple[str, str], list[float]] = {}
+
+    def _route_aliases(route_str: str) -> list[str]:
+        out = [route_str]
+        if route_str.isdigit():
+            unpadded = str(int(route_str))
+            if unpadded not in out:
+                out.append(unpadded)
+            for width in (2, 3):
+                padded = unpadded.zfill(width)
+                if padded not in out:
+                    out.append(padded)
+        return out
+
+    def _stop_aliases(stop_str: str) -> list[str]:
+        # Parquet stores stop_id as float-like string ("110.0"). The MBTA
+        # live API and most user input use the integer form ("110").
+        out = [stop_str]
+        if stop_str.endswith(".0"):
+            base = stop_str[:-2]
+            if base not in out:
+                out.append(base)
+        if stop_str.replace(".0", "").isdigit() and not stop_str.endswith(".0"):
+            decimal = stop_str + ".0"
+            if decimal not in out:
+                out.append(decimal)
+        return out
+
     for (route, stop), group in df.groupby(["route_id", "stop_id"]):
-        recent = group["delay"].tail(history).tolist()
-        cache[(str(route), str(stop))] = [float(x) for x in recent]
+        recent = [float(x) for x in group["delay"].tail(history).tolist()]
+        for r_alias in _route_aliases(str(route)):
+            for s_alias in _stop_aliases(str(stop)):
+                cache.setdefault((r_alias, s_alias), recent)
     return cache
 
 
 def _lag_features_for(route_id: str, stop_id: str, global_mean: float) -> list[float]:
-    """Return the last 5 delays + first difference for a route-stop pair.
+    """Return the last 5 delays (most recent first) + first difference.
 
-    Falls back to [global_mean]*5 + [0] if the pair has no history in cache.
+    Falls back to [global_mean]*5 + [0] when the pair has no history. The
+    cache itself indexes both padded ('01') and unpadded ('1') route IDs,
+    so callers don't have to guess the format.
     """
-    cache = _per_route_stop_recent_delays()
-    history = cache.get((str(route_id), str(stop_id)))
-    if not history or len(history) < 6:
-        # Try canonicalized id (e.g. "1" vs "01")
-        for prefix in ("0", "00"):
-            history = cache.get((prefix + str(route_id), str(stop_id)))
-            if history and len(history) >= 6:
-                break
-
+    history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id)))
     if not history:
         return [global_mean] * 5 + [0.0]
-
-    # Get last 5 delays in REVERSE order (most recent first)
     last_5 = list(reversed(history[-5:]))
-    # Pad if too short
     while len(last_5) < 5:
         last_5.append(global_mean)
-    # diff_1 = most_recent - second_most_recent
     diff_1 = (history[-1] - history[-2]) if len(history) >= 2 else 0.0
     return last_5 + [diff_1]
 
 
-def _rolling_stats_for(route_id: str, stop_id: str, global_mean: float, global_std: float) -> tuple[float, float, float, float]:
-    """Return (roll_mean_5, roll_std_5, roll_mean_10, roll_std_10) for a pair."""
+def _rolling_stats_for(
+    route_id: str, stop_id: str, global_mean: float, global_std: float,
+) -> tuple[float, float, float, float]:
+    """Return (roll_mean_5, roll_std_5, roll_mean_10, roll_std_10)."""
     import numpy as np
-    cache = _per_route_stop_recent_delays()
-    history = cache.get((str(route_id), str(stop_id))) or cache.get(("0" + str(route_id), str(stop_id)))
+    history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id)))
     if not history:
         return (global_mean, global_std, global_mean, global_std)
     arr = np.array(history, dtype=np.float32)
@@ -683,11 +706,18 @@ def _v5_v6_predict(
 
     # Real per-(route, stop) recent-delay history from the historical parquet.
     # Falls back to global mean only when this pair has no recent history.
-    lag_block = _lag_features_for(route_id, stop_id, global_mean)  # len 6: 5 lags + diff_1
-    roll_block = _rolling_stats_for(route_id, stop_id, global_mean, global_std)  # 4 stats
+    history = _per_route_stop_recent_delays().get((str(route_id), str(stop_id)))
+    used_defaults_dynamic: list[str] = []
+    if history:
+        lag_block = _lag_features_for(route_id, stop_id, global_mean)
+        roll_block = _rolling_stats_for(route_id, stop_id, global_mean, global_std)
+    else:
+        lag_block = [global_mean] * 5 + [0.0]
+        roll_block = (global_mean, global_std, global_mean, global_std)
+        used_defaults_dynamic.extend(["lag_features", "rolling_stats"])
 
     feature_vector = np.array(
-        [is_weekend, is_rush, hour_sin, hour_cos] + lag_block + list(roll_block),
+        [is_weekend, is_rush, hour_sin, hour_cos] + list(lag_block) + list(roll_block),
         dtype=np.float32,
     ).reshape(1, -1)
 
@@ -721,7 +751,8 @@ def _v5_v6_predict(
         "test_R2": entry["test_R2"],
         "test_RMSE": entry["test_RMSE"],
         "model_latency_ms": float(latency_ms),
-        "used_defaults": ["lag_features", "rolling_stats"],
+        "used_defaults": used_defaults_dynamic,
+        "used_history": len(history) if history else 0,
     }
 
 
