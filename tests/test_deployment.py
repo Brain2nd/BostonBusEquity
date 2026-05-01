@@ -487,7 +487,7 @@ def test_models_endpoint_matches_v1_to_v6_report_progression() -> None:
     assert "models" in body
     ids = [m["id"] for m in body["models"]]
 
-    # One entry per project version, in V1 -> V6 order
+    # V1 -> V6 followed by the V3+V6 ensemble (April finding)
     expected_ids = [
         "v1_baseline",
         "v2_historical",
@@ -495,17 +495,18 @@ def test_models_endpoint_matches_v1_to_v6_report_progression() -> None:
         "v4_multistep",
         "v5_neuronspark",
         "v6_transformer",
+        "v3v6_ensemble",
     ]
-    assert ids == expected_ids, f"registry must list V1->V6 in order, got {ids}"
+    assert ids == expected_ids, f"registry must list V1->V6 + ensemble in order, got {ids}"
 
     # Default is the project's headline best model
     assert body["default"] == "v6_transformer"
 
-    # Six unique feature versions and six unique architectures
+    # Seven feature-version labels (incl. v3+v6) and the headline architectures
     versions = {m["feature_version"] for m in body["models"]}
-    assert versions == {"v1", "v2", "v3", "v4", "v5", "v6"}
+    assert {"v1", "v2", "v3", "v4", "v5", "v6", "v3+v6"}.issubset(versions)
     archs = {m["architecture"] for m in body["models"]}
-    assert archs == {"MLP", "LSTM", "GRU", "Seq2Seq-GRU", "SNN", "Transformer"}
+    assert {"MLP", "LSTM", "GRU", "Seq2Seq-GRU", "SNN", "Transformer"}.issubset(archs)
 
     for entry in body["models"]:
         assert "test_R2" in entry

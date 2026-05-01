@@ -63,6 +63,7 @@ class PredictResponse(BaseModel):
     model_latency_ms: float | None = None
     used_history: int | None = None
     lag_source: str | None = None
+    ensemble_legs: dict[str, float] | None = None
 
 
 class PredictHorizonRequest(PredictRequest):

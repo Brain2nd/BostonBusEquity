@@ -27,6 +27,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from typing import Sequence
 import numpy as np
 import torch
 import torch.nn as nn
@@ -69,6 +70,8 @@ def train_one_model(
     batch_size: int = 256,
     lr: float = 1e-3,
     patience: int = 5,
+    lag_noise_std: float = 0.0,
+    lag_feature_indices: Sequence[int] | None = None,
 ) -> dict:
     print(f"\n{'='*60}\nTraining {model_name}\n{'='*60}")
 
@@ -106,11 +109,22 @@ def train_one_model(
     best_loss, best_state, wait = float("inf"), None, 0
     start = time.time()
 
+    # Pre-compute scaled noise std (input is z-scored to ~unit variance)
+    apply_noise = lag_noise_std > 0 and lag_feature_indices
+
     for epoch in range(epochs):
         model.train()
         epoch_loss = 0.0
         for X_batch, y_batch in train_loader:
             X_batch, y_batch = X_batch.to(DEVICE), y_batch.to(DEVICE)
+            if apply_noise:
+                # Inject Gaussian noise into the lag feature columns only.
+                # This trains the model to be robust to lag-feature
+                # perturbations at inference time (live MBTA lag is noisy).
+                noise = torch.randn_like(X_batch) * lag_noise_std
+                mask = torch.zeros_like(X_batch)
+                mask[:, list(lag_feature_indices)] = 1.0
+                X_batch = X_batch + noise * mask
             optimizer.zero_grad()
             pred = model(X_batch)
             loss = criterion(pred, y_batch)
@@ -183,7 +197,16 @@ def main():
     parser.add_argument("--skip-v4", action="store_true", help="Skip V4 multistep Seq2Seq training")
     parser.add_argument("--v4-horizon", type=int, default=5, help="V4 multi-step horizon")
     parser.add_argument("--v4-seq-len", type=int, default=10, help="V4 input sequence length")
+    parser.add_argument("--lag-noise-std", type=float, default=0.0,
+                        help="Stddev of Gaussian noise injected into lag features at training time (0=off)")
+    parser.add_argument("--output-suffix", type=str, default="",
+                        help="Suffix appended to checkpoint filenames so noise-trained models don't overwrite the clean ones")
     args = parser.parse_args()
+
+    # Indices of the lag-style features in the 14-dim V5/V6 feature vector:
+    # base (4) + lag_1..5 (5) + diff_1 (1) + roll_mean_5/std_5/mean_10/std_10 (4)
+    # Lag features are columns 4-9 (5 lags + 1 diff). Rolling means at 10, 12.
+    lag_feature_indices = list(range(4, 10)) + [10, 12]
 
     print(f"Device: {DEVICE}")
     print(f"Loading data with sample_size={args.sample_size}...")
@@ -196,8 +219,13 @@ def main():
             d_model=128, nhead=8, num_layers=4,
             dim_feedforward=512, dropout=0.1, seq_len=8,
         )
-        result = train_one_model(transformer, X_train, y_train, X_test, y_test,
-                                 model_name="V6 Transformer", epochs=args.epochs)
+        result = train_one_model(
+            transformer, X_train, y_train, X_test, y_test,
+            model_name="V6 Transformer",
+            epochs=args.epochs,
+            lag_noise_std=args.lag_noise_std,
+            lag_feature_indices=lag_feature_indices,
+        )
         bundle = {
             "model_state_dict": result["state_dict"],
             "model_kind": "transformer",
@@ -210,9 +238,15 @@ def main():
             "scaler_y": {"mean": result["scaler_y_mean"], "scale": result["scaler_y_scale"]},
             "trained_at": datetime.now().isoformat(),
             "trained_sample_size": args.sample_size,
-            "note": "Quick-train demo checkpoint; full-data run reaches R^2=0.9942.",
+            "lag_noise_std": args.lag_noise_std,
+            "note": (
+                f"V6 Transformer trained with lag_noise_std={args.lag_noise_std}."
+                if args.lag_noise_std > 0
+                else "Quick-train demo checkpoint; full-data run reaches R^2=0.9942."
+            ),
         }
-        out = MODELS_DIR / "delay_transformer_v6_quick.pt"
+        suffix = args.output_suffix or ""
+        out = MODELS_DIR / f"delay_transformer_v6_quick{suffix}.pt"
         torch.save(bundle, out)
         print(f"Saved {out}")
 

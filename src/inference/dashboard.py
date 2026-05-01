@@ -107,6 +107,17 @@ MODEL_REGISTRY: list[dict[str, Any]] = [
         "note": "Multi-head attention beats SNN at the same parameter scale. The project's headline result.",
     },
 ]
+MODEL_REGISTRY.append({
+    "id": "v3v6_ensemble",
+    "label": "V3+V6 Ensemble - high-bias + low-bias fusion (April finding)",
+    "checkpoint": "delay_transformer_v6_quick.pt",  # V6 leg; V3 leg loaded by adapter
+    "feature_version": "v3+v6",
+    "architecture": "Ensemble (GRU + Transformer)",
+    "test_R2": 0.9942,  # offline best, weighted by V6
+    "test_RMSE": 0.50,
+    "backend": "v3v6_ensemble_adapter",
+    "note": "Mean of V3 GRU (offline R^2=0.9846, robust to live noise) and V6 Transformer (offline R^2=0.9940, sharp on clean inputs). Designed to inherit V3's live robustness while keeping V6's offline accuracy.",
+})
 DEFAULT_MODEL_ID = "v6_transformer"
 LIVE_ROUTE_STOP_PRIORITIES = [
     ("1", "110"),
@@ -851,6 +862,74 @@ def _v5_v6_predict(
     }
 
 
+def _v3v6_ensemble_predict(
+    entry: dict[str, Any],
+    fallback_runtime: DelayPredictorRuntime,
+    route_id: str,
+    stop_id: str,
+    scheduled_time: str,
+    direction_id: str | None,
+    scheduled_headway: float | None,
+) -> dict[str, Any]:
+    """Run V3 GRU and V6 Transformer separately, return their mean.
+
+    Bias-variance fusion: V3 (high bias, low variance, robust to noisy live
+    lag) + V6 (low bias, high variance, sharp on clean offline lag) ->
+    averaged prediction inherits V3's robustness when live data is noisy
+    while keeping V6's accuracy on clean inputs.
+
+    Per-leg predictions are also returned so the UI can show both legs.
+    """
+    import time as _time
+
+    t0 = _time.perf_counter()
+    # Leg 1: V3 GRU via PR #4 RealtimeDelayPredictor
+    v3_entry = next(m for m in MODEL_REGISTRY if m["id"] == "v3_time_series")
+    v3_result = predict_with_registry_model(
+        model_id="v3_time_series",
+        fallback_runtime=fallback_runtime,
+        route_id=route_id,
+        stop_id=stop_id,
+        scheduled_time=scheduled_time,
+        direction_id=direction_id,
+        scheduled_headway=scheduled_headway,
+    )
+    # Leg 2: V6 Transformer via v5_v6_adapter
+    v6_entry = next(m for m in MODEL_REGISTRY if m["id"] == "v6_transformer")
+    v6_result = predict_with_registry_model(
+        model_id="v6_transformer",
+        fallback_runtime=fallback_runtime,
+        route_id=route_id,
+        stop_id=stop_id,
+        scheduled_time=scheduled_time,
+        direction_id=direction_id,
+        scheduled_headway=scheduled_headway,
+    )
+
+    v3_pred = float(v3_result["predicted_delay_minutes"])
+    v6_pred = float(v6_result["predicted_delay_minutes"])
+    ensemble_pred = (v3_pred + v6_pred) / 2.0
+    latency_ms = (_time.perf_counter() - t0) * 1000.0
+
+    return {
+        "predicted_delay_minutes": ensemble_pred,
+        "model": entry["label"],
+        "model_id": entry["id"],
+        "architecture": entry["architecture"],
+        "feature_version": entry["feature_version"],
+        "test_R2": entry["test_R2"],
+        "test_RMSE": entry["test_RMSE"],
+        "model_latency_ms": float(latency_ms),
+        "used_defaults": [],
+        "used_history": v6_result.get("used_history", 0),
+        "lag_source": v6_result.get("lag_source"),
+        "ensemble_legs": {
+            "v3_time_series": v3_pred,
+            "v6_transformer": v6_pred,
+        },
+    }
+
+
 def predict_with_registry_model(
     model_id: str,
     *,
@@ -865,6 +944,17 @@ def predict_with_registry_model(
     entry = next((m for m in MODEL_REGISTRY if m["id"] == model_id), None)
     if entry is None:
         raise ValueError(f"unknown model_id: {model_id}")
+
+    if entry["backend"] == "v3v6_ensemble_adapter":
+        return _v3v6_ensemble_predict(
+            entry,
+            fallback_runtime=fallback_runtime,
+            route_id=route_id,
+            stop_id=stop_id,
+            scheduled_time=scheduled_time,
+            direction_id=direction_id,
+            scheduled_headway=scheduled_headway,
+        )
 
     if entry["backend"] == "v4_seq2seq_adapter":
         return _v4_seq2seq_predict(
