@@ -487,7 +487,7 @@ def test_models_endpoint_matches_v1_to_v6_report_progression() -> None:
     assert "models" in body
     ids = [m["id"] for m in body["models"]]
 
-    # V1 -> V6 followed by the V3+V6 ensemble (April finding)
+    # V1 -> V6 then the V3+V6 ensemble and the noise-robust V6 retrain
     expected_ids = [
         "v1_baseline",
         "v2_historical",
@@ -496,8 +496,9 @@ def test_models_endpoint_matches_v1_to_v6_report_progression() -> None:
         "v5_neuronspark",
         "v6_transformer",
         "v3v6_ensemble",
+        "v6_transformer_noise",
     ]
-    assert ids == expected_ids, f"registry must list V1->V6 + ensemble in order, got {ids}"
+    assert ids == expected_ids, f"registry must list V1->V6 + ensemble + noise V6, got {ids}"
 
     # Default is the project's headline best model
     assert body["default"] == "v6_transformer"

@@ -118,6 +118,17 @@ MODEL_REGISTRY.append({
     "backend": "v3v6_ensemble_adapter",
     "note": "Mean of V3 GRU (offline R^2=0.9846, robust to live noise) and V6 Transformer (offline R^2=0.9940, sharp on clean inputs). Designed to inherit V3's live robustness while keeping V6's offline accuracy.",
 })
+MODEL_REGISTRY.append({
+    "id": "v6_transformer_noise",
+    "label": "V6 Transformer - noise-injection robustness retrain (sigma=0.5)",
+    "checkpoint": "delay_transformer_v6_quick_noise05.pt",
+    "feature_version": "v6_robust",
+    "architecture": "Transformer",
+    "test_R2": 0.8746,
+    "test_RMSE": 2.13,
+    "backend": "v5_v6_adapter",
+    "note": "V6 Transformer retrained with Gaussian noise (sigma=0.5) injected into lag features. Offline R^2 drops to 0.87 by design - the goal is improved robustness on noisy live MBTA inputs. Compare against the clean V6 in live-compare.",
+})
 DEFAULT_MODEL_ID = "v6_transformer"
 LIVE_ROUTE_STOP_PRIORITIES = [
     ("1", "110"),
