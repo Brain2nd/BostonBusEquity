@@ -461,8 +461,12 @@ Loss              : MSE
 ![V1 training curves](reports/figures/delay_prediction_training_curves_v1_baseline_temporal.png)
 *Figure: V1 (static features) — loss does not converge. R² remains negative.*
 
+![V2 training curves](reports/figures/delay_prediction_training_curves_v2_lag_features_temporal.png)
+*Figure: V2 (V1 + historical means/stds) — still cannot break out of the negative-R² regime.
+Confirms historical averages don't capture today's conditions.*
+
 ![V3 training curves](reports/figures/delay_prediction_training_curves_v3_wavelet_temporal.png)
-*Figure: V3 (lag + FFT + wavelet) — smooth convergence to R²=0.9846.*
+*Figure: V3 (lag + FFT + wavelet) — smooth convergence to R²=0.9846. The breakthrough.*
 
 ### 7.3 Why Each Architecture Was Chosen
 
@@ -532,6 +536,17 @@ When V3/V5/V6 were connected to the MBTA V3 live API, the offline ranking **inve
 ![Live vs offline model gap](reports/figures/mbta_realtime_model_gap_story.png)
 *Figure: Live MBTA context vs. local model predictions. The gap is disagreement,
 not error — true accuracy requires matched actual arrival records.*
+
+![MBTA official vs local model — single-poll snapshot](reports/figures/mbta_realtime_official_vs_model.png)
+*Figure: A single live MBTA V3 poll for one (route, stop) pair. Each upcoming trip is
+plotted with its MBTA official prediction (blue) and our local model's prediction
+(red). The disagreement decomposes the model gap by trip rather than averaging it.*
+
+![V4 optimization story](reports/figures/v4_optimization_story.png)
+*Figure: V4 hyperparameter sweep across LightGBM quantiles, feature profiles, and
+loss functions — produces the deployable bundle that minimizes the composite
+deployability score (accuracy + stability + online-readiness + early-delay
+behavior + cost).*
 
 ---
 
