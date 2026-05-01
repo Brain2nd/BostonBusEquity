@@ -129,7 +129,7 @@ git branch --show-current
 Start the dashboard:
 
 ```powershell
-python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib
+python -m src.inference.serve
 ```
 
 Open:

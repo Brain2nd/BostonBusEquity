@@ -53,7 +53,7 @@ python -m pip install -r requirements.txt
 From the repository root:
 
 ```powershell
-python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib
+python -m src.inference.serve
 ```
 
 Then open:

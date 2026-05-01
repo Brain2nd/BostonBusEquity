@@ -482,7 +482,7 @@ plain-language descriptions of the data processing and modeling code.
 
 ```powershell
 python -m src.inference.serve `
-  --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib `
+  `
   --host 127.0.0.1 `
   --port 8000
 ```

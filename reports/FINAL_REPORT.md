@@ -427,7 +427,7 @@ python -m src.inference.serve \
 
 Open `http://127.0.0.1:8000/`.
 
-The default dashboard model is the V4 LightGBM `v2_core` quantile bundle — chosen for its online-safe causal features and superior early-delay prediction (negative-prediction rate 17.1%, early-delay F1 0.373) over the V2 neural baseline.
+The default dashboard model is the **V6 Transformer** full-data retrained checkpoint (R²=0.9940, RMSE=0.46 min). Users can switch to any of the six trained checkpoints (V1 baseline through V6 Transformer) via the in-page model picker. The V4 LightGBM `v2_core` quantile bundle remains available as an optional comparison runtime; in our bias-variance investigation (Section 8.7) we observed that V3 GRU with FFT/wavelet features tracks MBTA's live predictions more closely than V6 despite having lower offline R² — the deployment-relevant trade-off motivating the matched-actuals investigation in Section 9.
 
 #### 8.9 Q8 Summary
 

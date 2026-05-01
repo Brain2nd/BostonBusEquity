@@ -272,9 +272,9 @@ historical statistics for deployment.
 |------|--------|----------|---------|
 | `delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt` | PyTorch | V2 MLP weights + scaler + route/stop/direction encoders + route-stop-hour stats | `src/inference/runtime.py` (V2 path) |
 | `delay_predictor_v4_best_online_safe_bundle.joblib` | joblib | V4 LightGBM (best MAE) + v2_core feature pipeline | `src/inference/runtime.py` (V4 path) |
-| `delay_predictor_v4_score_best_online_safe_bundle.joblib` | joblib | V4 LightGBM quantile 0.35 (best deployability score) + v2_core feature pipeline | Dashboard default |
-| `delay_neuronspark_v5_quick.pt` | PyTorch | V5 NeuronSpark SNN weights (full-data retrain) | Dashboard model picker |
-| `delay_transformer_v6_quick.pt` | PyTorch | V6 Transformer weights (full-data retrain) | Dashboard model picker |
+| `delay_predictor_v4_score_best_online_safe_bundle.joblib` | joblib | V4 LightGBM quantile 0.35 (best deployability score) + v2_core feature pipeline | Optional comparison runtime |
+| `delay_neuronspark_v5_quick.pt` | PyTorch | V5 NeuronSpark SNN weights (full-data retrain, R²=0.9897) | Dashboard model picker |
+| `delay_transformer_v6_quick.pt` | PyTorch | V6 Transformer weights (full-data retrain, R²=0.9940) | **Dashboard default** |
 | `delay_seq2seq_v4_quick.pt` | PyTorch | V4 Seq2Seq GRU weights (multi-step) | Dashboard model picker |
 
 ---

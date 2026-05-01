@@ -201,7 +201,7 @@ This is not the same as accuracy. It measures disagreement between MBTA official
 The project now includes a user-facing FastAPI dashboard:
 
 ```powershell
-python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib
+python -m src.inference.serve
 ```
 
 Open locally:

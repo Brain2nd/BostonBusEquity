@@ -36,7 +36,7 @@ By the end of a quick review, the repository should answer:
 
 If running locally, check:
 
-1. the server starts with `python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib`
+1. the server starts with `python -m src.inference.serve`
 2. the homepage loads
 3. model and figure sections render
 4. route-stop selection works
