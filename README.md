@@ -8,7 +8,7 @@ Boston University · Spark! Hub
 
 ## 🎬 Presentation Video
 
-**YouTube:** *(link to be added before the May 1 deadline)*
+**YouTube:** <https://youtu.be/dedC8ybJ_Kw>
 
 A 10-minute walk-through of the dashboard, the V1 → V6 model progression, and the live-vs-offline ranking inversion finding. Recording script: [`reports/PRESENTATION_VIDEO_SCRIPT.md`](reports/PRESENTATION_VIDEO_SCRIPT.md).
 
