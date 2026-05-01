@@ -3,10 +3,10 @@
 **Course:** CS506 Spring 2026
 **Total runtime:** 10:00
 **Target word count:** ~300 spoken words (avg 30 wpm — slow, deliberate; let the visuals do the work)
-**Recording setup:**
-- Browser at `http://127.0.0.1:8765` (the FastAPI dashboard, full-screen)
-- Editor split-screen for the few code shots
-- Run `python3 -m src.inference.serve --port 8765` before recording
+**Recording setup (dashboard-only, no code shots):**
+- Run `python3 -m src.inference.serve --port 8765` in a terminal
+- Browser at `http://127.0.0.1:8765`, full-screen, Cmd+Shift+R first
+- That's it — the entire video is filmed against the dashboard UI
 
 ---
 
@@ -104,14 +104,11 @@
 
 ---
 
-### 8:00 – 9:00 — Why: bias-variance, with data (40 words)
+### 8:00 – 9:00 — Why: bias-variance (40 words)
 
-`[VISUAL]` Open `reports/MARCH_CHECKIN_PRESENTATION.md` Section 0.4 in the editor (or a slide showing the same table).
+`[VISUAL]` Stay on the dashboard. Scroll to the *Modeling V1 -> V6* section, point at V3's R^2 = 0.9846 and V6's R^2 = 0.9942. Then back to the live-compare panel.
 
-`[ACTION]` Highlight the table:
-- Offline distribution: 80.9% LATE, mean +5.6 min
-- Live MBTA right now: 77.8% EARLY, mean -1.8 min
-Then highlight the same-input experiment table.
+`[ACTION]` Cursor on V3 row, then V6 row in the experiment table. Then point at the live-compare gap difference you just demonstrated.
 
 `[SAY]` "The cause is bias-variance. Live MBTA data is noisier than training. V6's larger model amplifies that noise. V3's wavelet features compress lag spikes, so V3 is high-bias but low-variance, and high-variance models lose on noisy live data."
 
@@ -119,14 +116,14 @@ Then highlight the same-input experiment table.
 
 ### 9:00 – 10:00 — Engineering response + close (30 words)
 
-`[VISUAL]` Cycle through three quick screens:
-1. Model picker → select *V3+V6 Ensemble*, run a prediction.
-2. Editor showing `src/inference/matched_actuals_daemon.py`.
-3. Dashboard footer.
+`[VISUAL]` Stay on the dashboard.
 
-`[ACTION]` Predict with the ensemble (show ensemble_legs in the response detail). Briefly show the daemon script. End on the dashboard hero.
+`[ACTION]`
+1. Step 1 dropdown → select *V3+V6 Ensemble*.
+2. Click *Predict delay*. The result panel shows both legs averaged.
+3. End on the dashboard hero (scroll to top).
 
-`[SAY]` "Three responses are already shipping. A V3-plus-V6 ensemble in the picker. A noise-injection retraining of V6 in progress. A matched-actuals daemon collecting ground truth for the final report. Code, dashboard, tests, and report are all on GitHub. Thank you."
+`[SAY]` "Three responses are already shipping. A V3-plus-V6 ensemble you can pick right here. A noise-injection retraining of V6 in progress. A matched-actuals daemon collecting ground truth for the final report. Everything is live on GitHub. Thank you."
 
 ---
 
@@ -149,10 +146,10 @@ Total ≈ **340 spoken words**. At ~30 wpm average pace this lands at exactly 10
 ---
 
 ## Pre-recording checklist
-- [ ] Dashboard server running on port 8765 (`python -m src.inference.serve`)
-- [ ] Browser cache cleared (Cmd+Shift+R) — make sure you see V3+V6 Ensemble in the picker
-- [ ] MBTA V3 API reachable (test `/api/live-compare` once)
-- [ ] Editor open with `reports/MARCH_CHECKIN_PRESENTATION.md` line 200 (Section 0.4)
-- [ ] Editor open with `src/inference/matched_actuals_daemon.py`
+- [ ] `python3 -m src.inference.serve --port 8765` running
+- [ ] Browser at `http://127.0.0.1:8765`, hard-refreshed (Cmd+Shift+R) — V3+V6 Ensemble visible in the model picker
+- [ ] One sanity prediction worked (`Predict delay` returns a number)
+- [ ] One sanity live-compare worked (`Fetch live comparison` returns a chart)
+- [ ] Browser zoom 100%, full-screen
 - [ ] Recording resolution: 1920×1080
-- [ ] Mic test, no fans
+- [ ] Mic test, no fans, no notifications
