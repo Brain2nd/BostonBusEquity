@@ -4,6 +4,18 @@ Project: **Boston Bus Equity**
 Course deliverable: **CS506 April check-in**  
 Current implementation status: **local FastAPI dashboard + online-safe V4 realtime delay model**
 
+## Current April Status
+
+This document summarizes the **current merged April state of the project** and focuses on what the repository now contains after the main realtime and dashboard work has been integrated.
+
+For the April check-in, the key repository-level outcomes are:
+
+1. a working local dashboard entrypoint
+2. a deployable online-safe realtime model bundle
+3. offline evaluation figures against true labels
+4. live MBTA comparison reports
+5. documentation that explains how to review and run the current deliverables
+
 ## Rubric Coverage Summary
 
 | Rubric area | What we will show | Evidence in this repo |
@@ -189,10 +201,7 @@ This is not the same as accuracy. It measures disagreement between MBTA official
 The project now includes a user-facing FastAPI dashboard:
 
 ```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve `
-  --bundle models\delay_predictor_v4_score_best_online_safe_bundle.joblib `
-  --host 0.0.0.0 `
-  --port 8000
+python -m src.inference.serve --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib
 ```
 
 Open locally:
