@@ -8,10 +8,10 @@ A data analysis project examining MBTA bus service performance and its impact on
 - GitHub submission guide: [`docs/GITHUB_SUBMISSION_GUIDE.md`](docs/GITHUB_SUBMISSION_GUIDE.md)
 - Realtime dashboard command:
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve `
-  --bundle models\delay_predictor_v4_score_best_online_safe_bundle.joblib `
-  --host 0.0.0.0 `
+```bash
+python -m src.inference.serve \
+  --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib \
+  --host 0.0.0.0 \
   --port 8000
 ```
 
@@ -93,17 +93,28 @@ The MBTA serves over 1 million people daily, with an estimated added economic va
 ```
 BostonBusEquity/
 ├── data/
-│   ├── raw/                 # Original, immutable data
-│   ├── processed/           # Cleaned, transformed data
-│   └── external/            # Data from third-party sources
-├── notebooks/               # Jupyter notebooks for analysis
+│   ├── raw/                 # Original, immutable data (~20 GB, not in git)
+│   ├── processed/           # Cleaned parquet + CSVs (not in git)
+│   └── external/            # Third-party data (census, GTFS)
+├── models/                  # Trained model checkpoints (.pt, .joblib)
+├── notebooks/               # Jupyter notebooks for exploratory analysis
 ├── src/
-│   ├── data/               # Data processing scripts
-│   ├── analysis/           # Analysis scripts
-│   └── visualization/      # Visualization scripts
+│   ├── data/                # Download, cleaning, parquet conversion scripts
+│   ├── analysis/            # Q1–Q7 analysis modules
+│   ├── models/              # V1–V6 model training scripts + SNN architecture
+│   ├── inference/           # Realtime FastAPI service, bundle builder, MBTA client
+│   └── visualization/       # Figure generation scripts
 ├── reports/
-│   └── figures/            # Generated graphics and figures
-├── docs/                   # Documentation
+│   ├── figures/             # Generated PNG figures (27 files)
+│   └── *.md                 # Per-experiment markdown reports
+├── docs/                    # Project documentation
+│   ├── APRIL_CHECKIN_TECHNICAL_REPORT.md
+│   ├── DATA_DICTIONARY.md   # Field-level dataset reference
+│   ├── MODEL_ARCHITECTURE_GUIDE.md  # V1–V6 architecture details
+│   ├── PROJECT_PLAN.md
+│   └── ANALYSIS_PLAN.md
+├── tests/                   # Deployment + API tests (64 test cases)
+├── NeuronSpark/             # NeuronSpark SNN reference implementation
 └── README.md
 ```
 
@@ -272,17 +283,14 @@ The realtime service expects a single bundle file that combines:
 - route/stop/direction encoders
 - route/stop/hour historical statistics
 
-If your environment does not expose `python` on `PATH`, use an explicit interpreter path.
-
 ```bash
-# Example with a specific interpreter
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.build_bundle
+python -m src.inference.build_bundle
 ```
 
 Optional arguments:
 
 ```bash
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.build_bundle \
+python -m src.inference.build_bundle \
   --processed-dir data/processed \
   --checkpoint models/delay_predictor_mlp_v2_lag_features_temporal.pt \
   --output models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt
@@ -295,7 +303,7 @@ built only from the available years.
 ### Run the Local API
 
 ```bash
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve \
+python -m src.inference.serve \
   --bundle models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt \
   --host 127.0.0.1 \
   --port 8000
@@ -334,7 +342,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/predict `
 You can generate a latency baseline figure and markdown report with:
 
 ```bash
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.benchmark_latency
+python -m src.inference.benchmark_latency
 ```
 
 Outputs:
@@ -349,7 +357,7 @@ the `runtime.predict` path and notes that the API benchmark was skipped.
 You can also generate a "predicted delay over time" figure for the realtime inference path:
 
 ```bash
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.plot_predictions_over_time
+python -m src.inference.plot_predictions_over_time
 ```
 
 Outputs:
@@ -364,8 +372,8 @@ and labels the figure/report accordingly.
 You can override the default plotted series with repeated `--series` flags:
 
 ```bash
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.plot_predictions_over_time ^
-  --series "Route 22 Downtown,22,70001,0,10" ^
+python -m src.inference.plot_predictions_over_time \
+  --series "Route 22 Downtown,22,70001,0,10" \
   --series "Route 28 Roxbury,28,70002,0,8"
 ```
 
@@ -378,23 +386,23 @@ local V2 delay model if a realtime bundle is available.
 Official predictions only:
 
 ```bash
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.plot_mbta_realtime_comparison ^
-  --route-id 111 ^
-  --stop-id 5547 ^
-  --direction-id 1 ^
-  --poll-count 6 ^
+python -m src.inference.plot_mbta_realtime_comparison \
+  --route-id 111 \
+  --stop-id 5547 \
+  --direction-id 1 \
+  --poll-count 6 \
   --poll-interval-seconds 30
 ```
 
 Official predictions vs local V2 model:
 
 ```bash
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.plot_mbta_realtime_comparison ^
-  --route-id 111 ^
-  --stop-id 5547 ^
-  --direction-id 1 ^
-  --bundle models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt ^
-  --poll-count 6 ^
+python -m src.inference.plot_mbta_realtime_comparison \
+  --route-id 111 \
+  --stop-id 5547 \
+  --direction-id 1 \
+  --bundle models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt \
+  --poll-count 6 \
   --poll-interval-seconds 30
 ```
 
@@ -425,10 +433,10 @@ uses `2024` for training, `2025` for validation, and `2026` for testing. If
 LightGBM is installed, `--model-kind auto` uses LightGBM; otherwise it falls
 back to sklearn's histogram gradient boosting model.
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.models.train_delay_predictor_v4 `
-  --processed-path data/processed/arrival_departure.parquet `
-  --output-bundle models/delay_predictor_v4_tree_realtime_bundle.joblib `
+```bash
+python -m src.models.train_delay_predictor_v4 \
+  --processed-path data/processed/arrival_departure.parquet \
+  --output-bundle models/delay_predictor_v4_tree_realtime_bundle.joblib \
   --model-kind auto
 ```
 
@@ -458,13 +466,13 @@ For optimization, run a model-family and feature-profile sweep instead of
 trusting one tree model. The final retrain option keeps `2026` as the holdout,
 but refits deployable candidates on all prior labels (`2024+2025`):
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.models.sweep_delay_predictor_v4 `
-  --max-train-rows 50000 `
-  --max-validation-rows 50000 `
-  --max-test-rows 10000 `
-  --candidates dummy,ridge,hist_gradient_boosting,hist_gradient_boosting_l2,extra_trees `
-  --feature-profiles all,no_ids,v2_core,stats_time `
+```bash
+python -m src.models.sweep_delay_predictor_v4 \
+  --max-train-rows 50000 \
+  --max-validation-rows 50000 \
+  --max-test-rows 10000 \
+  --candidates dummy,ridge,hist_gradient_boosting,hist_gradient_boosting_l2,extra_trees \
+  --feature-profiles all,no_ids,v2_core,stats_time \
   --include-validation-in-final
 ```
 
@@ -498,10 +506,10 @@ The realtime FastAPI service also serves an English presentation dashboard at
 metrics, manual local prediction, MBTA official-vs-local live comparison, and
 plain-language descriptions of the data processing and modeling code.
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve `
-  --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib `
-  --host 127.0.0.1 `
+```bash
+python -m src.inference.serve \
+  --bundle models/delay_predictor_v4_score_best_online_safe_bundle.joblib \
+  --host 127.0.0.1 \
   --port 8000
 ```
 
@@ -509,8 +517,8 @@ Open `http://127.0.0.1:8000/`.
 
 Presentation figures that summarize the optimization decision:
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.visualization.create_v4_optimization_figures
+```bash
+python -m src.visualization.create_v4_optimization_figures
 ```
 
 Outputs:
@@ -521,10 +529,10 @@ Outputs:
 The existing HTTP API can load either the old V2 `.pt` bundle or the V4
 `.joblib` bundle:
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve `
-  --bundle models/delay_predictor_v4_tree_realtime_bundle.joblib `
-  --host 127.0.0.1 `
+```bash
+python -m src.inference.serve \
+  --bundle models/delay_predictor_v4_tree_realtime_bundle.joblib \
+  --host 127.0.0.1 \
   --port 8000
 ```
 
@@ -533,21 +541,21 @@ C:\Users\yaobc\anaconda3\python.exe -m src.inference.serve `
 V5 is not enabled until there are enough matched live labels. First collect
 MBTA `/predictions` and `/vehicles` snapshots:
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.log_mbta_live_snapshots `
-  --route-id 111 `
-  --stop-id 5547 `
-  --direction-id 1 `
-  --poll-count 6 `
+```bash
+python -m src.inference.log_mbta_live_snapshots \
+  --route-id 111 \
+  --stop-id 5547 \
+  --direction-id 1 \
+  --poll-count 6 \
   --poll-interval-seconds 30
 ```
 
 Then match snapshots to actual arrival/departure labels:
 
-```powershell
-C:\Users\yaobc\anaconda3\python.exe -m src.inference.build_v5_residual_dataset `
-  --snapshot-dir reports/live_prediction_snapshots `
-  --processed-path data/processed/arrival_departure.parquet `
+```bash
+python -m src.inference.build_v5_residual_dataset \
+  --snapshot-dir reports/live_prediction_snapshots \
+  --processed-path data/processed/arrival_departure.parquet \
   --min-samples 500
 ```
 
