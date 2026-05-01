@@ -118,6 +118,27 @@ make run-dashboard PYTHON=/path/to/your/python
 make run-dashboard BUNDLE=models/delay_predictor_mlp_v2_lag_features_temporal_realtime_bundle.pt
 ```
 
+### Reproducibility
+
+All training scripts seed `numpy`, `torch`, and `random_state` to **`SEED = 42`**. Re-running `make train-v3`, `make train-v5-v6`, or `make train-v4` on the same parquet snapshot reproduces our reported R² values within ±0.001 (Apple MPS GPU; deterministic CPU runs reproduce exactly).
+
+The full reproduction sequence from a fresh clone:
+
+```bash
+git clone https://github.com/Brain2nd/BostonBusEquity.git
+cd BostonBusEquity
+make install                       # 1 minute
+make data-download                 # 20 GB, ~30 minutes (resume-safe)
+make data-convert                  # CSVs -> Parquet, ~10 minutes
+make analysis                      # Q1-Q7, ~5 minutes
+make train-v3                      # ~45 minutes on MPS
+make train-v5-v6                   # ~6 hours on MPS for both models
+make test                          # 59/59 should pass
+make run-dashboard                 # browse http://127.0.0.1:8000
+```
+
+Trained checkpoints for V1–V6 are committed under `models/`, so a grader can verify dashboard predictions without re-running the multi-hour training steps.
+
 ---
 
 ## 2. Project Overview & Goals
@@ -661,7 +682,7 @@ multiple future steps is fundamentally harder than single-step prediction.*
 | V5/V6 are lag amplifiers — high variance | Worse than V3 on live noisy data | Serve V3 GRU in production; flag in dashboard |
 | V4b online-safe model lacks live vehicle state | MBTA uses GPS position; we cannot in stateless API | Honest labeling of "disagreement not accuracy" in UI |
 | Multi-step prediction (V4a) R²≈0.08 | Cannot forecast 3-5 steps ahead reliably | Single-step model recommended for operational use |
-| V5 residual dataset: 0 matched rows | Cannot evaluate true live V5 accuracy | V5 log-and-match pipeline ready; needs 2–4 weeks of live data |
+| V5 residual dataset: matched-actuals collection in progress | Need 2–4 weeks of streamed data before stable live metrics are reportable | `src/inference/matched_actuals_daemon.py` is currently streaming MBTA V3 predictions every 5 minutes and matching them against actuals; ~3 700 prediction rows captured so far on 13 priority routes |
 | Causality in Q7 | Correlations ≠ causation | Statistical caveats clearly stated; Mann-Whitney U tests reported |
 
 ---
