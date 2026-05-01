@@ -6,11 +6,12 @@ Boston University · Spark! Hub
 **Team:** zztangbu@bu.edu · lzj2729@bu.edu · ljf628@bu.edu · yaobc@bu.edu  
 **Client:** City of Boston Analytics Team / Spark!
 
-## 🎬 Presentation Video
+## 🔗 Submission Links
 
-**YouTube:** <https://youtu.be/dedC8ybJ_Kw>
+- **GitHub repository:** <https://github.com/Brain2nd/BostonBusEquity>
+- **🎬 Presentation video (YouTube):** <https://youtu.be/dedC8ybJ_Kw>
 
-A 10-minute walk-through of the dashboard, the V1 → V6 model progression, and the live-vs-offline ranking inversion finding. Recording script: [`reports/PRESENTATION_VIDEO_SCRIPT.md`](reports/PRESENTATION_VIDEO_SCRIPT.md).
+The video is a 10-minute walk-through of the dashboard, the V1 → V6 model progression, and the live-vs-offline ranking inversion finding. Recording script: [`reports/PRESENTATION_VIDEO_SCRIPT.md`](reports/PRESENTATION_VIDEO_SCRIPT.md).
 
 ## April Check-In Deliverables
 
